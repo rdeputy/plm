@@ -151,13 +151,14 @@ def upgrade() -> None:
     )
 
     # Now add FK for part_revisions.change_order_id
-    op.create_foreign_key(
-        "fk_part_revisions_change_order",
-        "part_revisions",
-        "change_orders",
-        ["change_order_id"],
-        ["id"],
-    )
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table("part_revisions") as batch_op:
+        batch_op.create_foreign_key(
+            "fk_part_revisions_change_order",
+            "change_orders",
+            ["change_order_id"],
+            ["id"],
+        )
 
     # Changes
     op.create_table(
@@ -419,7 +420,9 @@ def downgrade() -> None:
     op.drop_table("impact_analyses")
     op.drop_table("approvals")
     op.drop_table("changes")
-    op.drop_constraint("fk_part_revisions_change_order", "part_revisions", type_="foreignkey")
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table("part_revisions") as batch_op:
+        batch_op.drop_constraint("fk_part_revisions_change_order", type_="foreignkey")
     op.drop_table("change_orders")
     op.drop_table("bom_items")
     op.drop_table("boms")
