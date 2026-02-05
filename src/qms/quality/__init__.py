@@ -1,7 +1,7 @@
 """
 Quality Management Module
 
-Integrated quality management for PLM:
+Quality management for QMS:
 - NCRs (Non-Conformance Reports)
 - CAPAs (Corrective and Preventive Actions)
 - Inspection records
@@ -11,6 +11,7 @@ from .models import (
     NCRStatus,
     NCRSeverity,
     NCRSource,
+    DispositionType,
     CAPAType,
     CAPAStatus,
     NonConformanceReport,
@@ -21,12 +22,14 @@ from .models import (
 from .service import QualityService, get_quality_service
 
 __all__ = [
-    # Models
+    # Enums
     "NCRStatus",
     "NCRSeverity",
     "NCRSource",
+    "DispositionType",
     "CAPAType",
     "CAPAStatus",
+    # Models
     "NonConformanceReport",
     "CAPA",
     "InspectionRecord",

@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from plm.warranty import (
+from qms.warranty import (
     get_warranty_service,
     WarrantyType,
     WarrantyStatus,
