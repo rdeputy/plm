@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from plm.documents.models import (
     CheckoutStatus,
     increment_document_revision,
 )
+from plm.documents.dms_integration import PLMDocumentService, get_document_service
 
 router = APIRouter()
 
@@ -685,6 +687,259 @@ async def get_document_version(
         raise HTTPException(status_code=404, detail="Version not found")
 
     return _version_to_response(version)
+
+
+# ----- File Upload/Download Endpoints -----
+
+
+@router.post("/{doc_id}/upload", response_model=DocumentResponse)
+async def upload_file(
+    doc_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Query(...),
+    db: Session = Depends(get_db_session),
+):
+    """
+    Upload a file for a document.
+
+    Stores the file in the DMS and updates document metadata.
+    If the document is checked out, creates a new version on checkin.
+    """
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Must be draft or checked out to upload
+    if doc.status not in [DocumentStatus.DRAFT.value, DocumentStatus.PENDING_REVIEW.value]:
+        if doc.checkout_status != CheckoutStatus.CHECKED_OUT.value:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot upload to document in status {doc.status} unless checked out",
+            )
+        if doc.checked_out_by != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Document is checked out by {doc.checked_out_by}",
+            )
+
+    # Read file content
+    content = await file.read()
+
+    # Upload to DMS
+    service = get_document_service()
+    result = service.upload(
+        document_id=doc_id,
+        content=content,
+        filename=file.filename or "document",
+        user_id=user_id,
+        document_type=doc.document_type.value if hasattr(doc.document_type, 'value') else doc.document_type,
+        revision=doc.revision,
+        project_id=doc.project_id,
+    )
+
+    if not result.success:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {result.error}")
+
+    # Update document metadata
+    doc.storage_path = result.storage_path
+    doc.file_name = file.filename
+    doc.file_size = result.file_size
+    doc.file_hash = result.file_hash
+    doc.mime_type = result.mime_type
+
+    db.commit()
+    db.refresh(doc)
+
+    return _doc_to_response(doc)
+
+
+@router.get("/{doc_id}/download")
+async def download_file(
+    doc_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Download the file for a document.
+
+    Returns the file content with appropriate MIME type.
+    """
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.storage_path:
+        raise HTTPException(status_code=404, detail="No file uploaded for this document")
+
+    service = get_document_service()
+    content = service.download(doc.storage_path)
+
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    return Response(
+        content=content,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{doc.file_name or "document"}"'
+        },
+    )
+
+
+@router.get("/{doc_id}/versions/{version_id}/download")
+async def download_version(
+    doc_id: str,
+    version_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Download a specific version of a document."""
+    version = (
+        db.query(DocumentVersionModel)
+        .filter(DocumentVersionModel.id == version_id, DocumentVersionModel.document_id == doc_id)
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    service = get_document_service()
+    content = service.download(version.storage_path)
+
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    mime_type = doc.mime_type if doc else "application/octet-stream"
+
+    return Response(
+        content=content,
+        media_type=mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="v{version.version_number}_{doc.file_name or "document"}"'
+        },
+    )
+
+
+# ----- Search Endpoints -----
+
+
+class SearchRequest(BaseModel):
+    """Search request schema."""
+    query: str
+    document_type: Optional[str] = None
+    project_id: Optional[str] = None
+    limit: int = 20
+
+
+class SearchHitResponse(BaseModel):
+    """Search hit response."""
+    document_id: str
+    storage_path: str
+    score: float
+    snippet: str
+    doc_type: str
+
+
+@router.post("/search", response_model=list[SearchHitResponse])
+async def search_documents(
+    request: SearchRequest,
+):
+    """
+    Search documents by content using semantic search.
+
+    Uses ChromaDB via orchestrator DMS for vector similarity search.
+    """
+    service = get_document_service()
+    results = service.search(
+        query=request.query,
+        document_type=request.document_type,
+        project_id=request.project_id,
+        limit=request.limit,
+    )
+
+    return [
+        SearchHitResponse(
+            document_id=r.document_id,
+            storage_path=r.storage_path,
+            score=r.score,
+            snippet=r.snippet,
+            doc_type=r.doc_type,
+        )
+        for r in results
+    ]
+
+
+@router.post("/{doc_id}/classify")
+async def classify_document(
+    doc_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Classify a document using AI-based classification.
+
+    Returns suggested document type and confidence score.
+    """
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.storage_path:
+        raise HTTPException(status_code=400, detail="No file uploaded for classification")
+
+    service = get_document_service()
+    result = service.classify(doc.storage_path)
+
+    return result
+
+
+@router.post("/{doc_id}/extract-metadata")
+async def extract_metadata(
+    doc_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Extract structured metadata from a document.
+
+    Extracts dates, amounts, references, and entities from document content.
+    """
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.storage_path:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    service = get_document_service()
+    doc_type = doc.document_type.value if hasattr(doc.document_type, 'value') else doc.document_type
+    result = service.extract_metadata(doc.storage_path, doc_type)
+
+    return result
+
+
+@router.get("/{doc_id}/verify-integrity")
+async def verify_integrity(
+    doc_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Verify document file integrity against stored hash.
+
+    Returns whether the file matches the expected SHA-256 hash.
+    """
+    doc = db.query(DocumentModel).filter(DocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.storage_path or not doc.file_hash:
+        raise HTTPException(status_code=400, detail="No file or hash stored")
+
+    service = get_document_service()
+    is_valid = service.verify_integrity(doc.storage_path, doc.file_hash)
+
+    return {
+        "document_id": doc_id,
+        "file_hash": doc.file_hash,
+        "is_valid": is_valid,
+        "storage_path": doc.storage_path,
+    }
 
 
 # ----- Cross-reference Endpoints -----
