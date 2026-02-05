@@ -1,14 +1,17 @@
 """
-PLM - Product & Materials System for Construction
+PLM - Product Lifecycle Management for Construction
 
-A unified system combining:
-- Product Lifecycle Management (parts, BOMs, revisions, ECOs)
-- Material Requirements Planning (MRP/MRPII)
-- Inventory Management
-- Procurement
-
-Single source of truth for design data AND material planning.
-No integration headaches - one codebase, one database.
+Core Modules:
+- Parts & BOMs (parts, assemblies, revisions)
+- Change Management (ECOs, workflows, approvals)
+- Documents (DMS with versioning, check-in/out)
+- Requirements (traceability, verification)
+- Suppliers (AML/AVL, manufacturer parts)
+- Compliance (RoHS, REACH, conflict minerals)
+- Costing (cost rollups, should-cost analysis)
+- Service Bulletins (maintenance, configuration)
+- Projects (milestones, deliverables)
+- Integrations (MRP sync, notifications)
 """
 
 __version__ = "0.1.0"
