@@ -9,6 +9,7 @@ from typing import Generator
 from sqlalchemy.orm import Session
 
 from plm.db import SessionLocal
+from .auth import require_api_key  # noqa: F401 — re-export for router imports
 
 
 def get_db_session() -> Generator[Session, None, None]:

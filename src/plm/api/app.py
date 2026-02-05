@@ -4,10 +4,13 @@ PLM FastAPI Application
 Main application factory and configuration.
 """
 
-from fastapi import FastAPI
+import os
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import parts, inventory, procurement, configurations
+from .auth import require_api_key
+from .routers import parts, inventory, procurement, configurations, boms, changes, documents
 
 
 def create_app() -> FastAPI:
@@ -20,21 +23,42 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # CORS middleware
+    # CORS middleware — restrict origins via env var
+    allowed_origins = os.getenv(
+        "PLM_CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:8001",
+    ).split(",")
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure for production
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Include routers
-    app.include_router(parts.router, prefix="/api/v1/parts", tags=["Parts"])
-    app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["Inventory"])
-    app.include_router(procurement.router, prefix="/api/v1/procurement", tags=["Procurement"])
+    # Include routers — all /api/v1/* routes require API key
+    api_deps = [Depends(require_api_key)]
     app.include_router(
-        configurations.router, prefix="/api/v1/configurations", tags=["Configurations"]
+        parts.router, prefix="/api/v1/parts", tags=["Parts"], dependencies=api_deps
+    )
+    app.include_router(
+        inventory.router, prefix="/api/v1/inventory", tags=["Inventory"], dependencies=api_deps
+    )
+    app.include_router(
+        procurement.router, prefix="/api/v1/procurement", tags=["Procurement"], dependencies=api_deps
+    )
+    app.include_router(
+        configurations.router, prefix="/api/v1/configurations", tags=["Configurations"], dependencies=api_deps
+    )
+    app.include_router(
+        boms.router, prefix="/api/v1/boms", tags=["BOMs"], dependencies=api_deps
+    )
+    app.include_router(
+        changes.router, prefix="/api/v1/changes", tags=["Changes"], dependencies=api_deps
+    )
+    app.include_router(
+        documents.router, prefix="/api/v1/documents", tags=["Documents"], dependencies=api_deps
     )
 
     @app.get("/health")

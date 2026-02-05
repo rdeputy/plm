@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  plm:
+    build:
+      context: .
+      target: production
+    container_name: plm
+    ports:
+      - "8001:8001"
+    depends_on:
+      - plm-redis
+    volumes:
+      - plm-data:/app/data
+    environment:
+      - PLM_DATABASE_URL=sqlite:///data/plm.db
+      - REDIS_URL=redis://plm-redis:6379/0
+      - PLM_API_KEY=${PLM_API_KEY:?Set PLM_API_KEY in .env}
+      - PLM_CORS_ORIGINS=${PLM_CORS_ORIGINS:-http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  plm-redis:
+    image: redis:7-alpine
+    container_name: plm-redis
+    volumes:
+      - plm-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  plm-worker:
+    build:
+      context: .
+      target: production
+    container_name: plm-worker
+    depends_on:
+      - plm-redis
+    environment:
+      - REDIS_URL=redis://plm-redis:6379/0
+    command: ["celery", "-A", "src.plm.tasks", "worker", "--loglevel=info"]
+    restart: unless-stopped
+
+volumes:
+  plm-data:
+    driver: local
+  plm-redis-data:
+    driver: local

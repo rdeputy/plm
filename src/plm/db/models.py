@@ -31,6 +31,7 @@ from ..boms.models import BOMType, Effectivity
 from ..changes.models import ChangeReason, ChangeType, ChangeUrgency, ECOStatus
 from ..inventory.models import TransactionType
 from ..procurement.models import POStatus
+from ..documents.models import DocumentType, DocumentStatus, CheckoutStatus
 
 
 # =============================================================================
@@ -734,3 +735,135 @@ class ReceiptItemModel(Base):
 
     # Relationships
     receipt: Mapped["ReceiptModel"] = relationship(back_populates="items")
+
+
+# =============================================================================
+# Document Models
+# =============================================================================
+
+
+class DocumentModel(Base):
+    """Document ORM model."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    revision: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+
+    document_type: Mapped[DocumentType] = mapped_column(
+        Enum(DocumentType), default=DocumentType.OTHER
+    )
+    status: Mapped[DocumentStatus] = mapped_column(
+        Enum(DocumentStatus), default=DocumentStatus.DRAFT, index=True
+    )
+
+    # File reference (DMS path)
+    storage_path: Mapped[Optional[str]] = mapped_column(String(1000))
+    file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    file_size: Mapped[Optional[int]] = mapped_column(Integer)
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA-256
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Classification
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    discipline: Mapped[Optional[str]] = mapped_column(String(100))
+    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+
+    # Check-in/check-out
+    checkout_status: Mapped[CheckoutStatus] = mapped_column(
+        Enum(CheckoutStatus), default=CheckoutStatus.AVAILABLE
+    )
+    checked_out_by: Mapped[Optional[str]] = mapped_column(String(100))
+    checked_out_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    checkout_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Lifecycle
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    released_by: Mapped[Optional[str]] = mapped_column(String(100))
+    released_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    superseded_by: Mapped[Optional[str]] = mapped_column(String(36))
+
+    # Metadata (JSON)
+    attributes: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    # Relationships
+    versions: Mapped[list["DocumentVersionModel"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+    links: Mapped[list["DocumentLinkModel"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+
+    @property
+    def full_document_number(self) -> str:
+        return f"{self.document_number}-{self.revision}"
+
+
+class DocumentVersionModel(Base):
+    """Document version history."""
+
+    __tablename__ = "document_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("documents.id"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    # File snapshot
+    storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Change tracking
+    change_summary: Mapped[Optional[str]] = mapped_column(Text)
+    change_order_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("change_orders.id")
+    )
+
+    # Timestamps
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    # Metadata snapshot
+    attributes: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+
+    # Relationships
+    document: Mapped["DocumentModel"] = relationship(back_populates="versions")
+    change_order: Mapped[Optional["ChangeOrderModel"]] = relationship()
+
+
+class DocumentLinkModel(Base):
+    """Document links to PLM entities."""
+
+    __tablename__ = "document_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("documents.id"), nullable=False, index=True
+    )
+
+    # Link targets (one of these)
+    part_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("parts.id"), index=True)
+    bom_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("boms.id"), index=True)
+    eco_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("change_orders.id"), index=True)
+    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+
+    # Link metadata
+    link_type: Mapped[str] = mapped_column(String(50), default="reference")
+    description: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    # Relationships
+    document: Mapped["DocumentModel"] = relationship(back_populates="links")
+    part: Mapped[Optional["PartModel"]] = relationship()
+    bom: Mapped[Optional["BOMModel"]] = relationship()
+    change_order: Mapped[Optional["ChangeOrderModel"]] = relationship()
