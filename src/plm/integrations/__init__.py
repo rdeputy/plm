@@ -1,30 +1,40 @@
-"""External system integrations."""
-from .orchestrator import (
-    OrchestratorClient,
-    PLMTaskHandler,
-    WorkflowTask,
-    TaskStatus,
+"""
+PLM Integrations Module
+
+Integration adapters for external systems (MRP, QMS, etc.)
+"""
+from .models import (
+    SyncStatus,
+    SyncDirection,
+    ChangeAction,
+    ItemMasterSync,
+    BOMSync,
+    BOMLineSync,
+    ECONotification,
+    ECOLineSync,
+    CostUpdate,
+    InventoryStatus,
+    SyncLogEntry,
+    MRPIntegrationConfig,
 )
-from .arc_review import (
-    ARCClient,
-    ARCComplianceChecker,
-    ARCSubmission,
-    ARCCondition,
-    SubmissionStatus,
-    ChangeCategory,
-)
+from .mrp_service import MRPIntegrationService, get_mrp_integration_service
 
 __all__ = [
-    # Orchestrator
-    "OrchestratorClient",
-    "PLMTaskHandler",
-    "WorkflowTask",
-    "TaskStatus",
-    # ARC-Review
-    "ARCClient",
-    "ARCComplianceChecker",
-    "ARCSubmission",
-    "ARCCondition",
-    "SubmissionStatus",
-    "ChangeCategory",
+    # Enums
+    "SyncStatus",
+    "SyncDirection",
+    "ChangeAction",
+    # Models
+    "ItemMasterSync",
+    "BOMSync",
+    "BOMLineSync",
+    "ECONotification",
+    "ECOLineSync",
+    "CostUpdate",
+    "InventoryStatus",
+    "SyncLogEntry",
+    "MRPIntegrationConfig",
+    # Service
+    "MRPIntegrationService",
+    "get_mrp_integration_service",
 ]
