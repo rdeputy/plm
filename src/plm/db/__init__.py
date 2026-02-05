@@ -25,17 +25,37 @@ from .models import (
     ChangeModel,
     ApprovalModel,
     ImpactAnalysisModel,
-    # Inventory
-    InventoryLocationModel,
-    InventoryItemModel,
-    InventoryTransactionModel,
-    # Procurement
-    VendorModel,
-    PriceAgreementModel,
-    PurchaseOrderModel,
-    POItemModel,
-    ReceiptModel,
-    ReceiptItemModel,
+    # Requirements
+    RequirementModel,
+    RequirementLinkModel,
+    VerificationRecordModel,
+    # Suppliers
+    ManufacturerModel,
+    SupplierVendorModel,
+    ApprovedManufacturerModel,
+    ApprovedVendorModel,
+    # Compliance
+    RegulationModel,
+    SubstanceDeclarationModel,
+    ComplianceDeclarationModel,
+    ComplianceCertificateModel,
+    ConflictMineralDeclarationModel,
+    # Costing
+    PartCostModel,
+    CostElementModel,
+    CostVarianceModel,
+    ShouldCostAnalysisModel,
+    # Service Bulletins
+    ServiceBulletinModel,
+    BulletinComplianceModel,
+    MaintenanceScheduleModel,
+    UnitConfigurationModel,
+    # Projects
+    ProjectModel,
+    MilestoneModel,
+    DeliverableModel,
+    # Integrations
+    SyncLogEntryModel,
 )
 
 __all__ = [
@@ -58,15 +78,35 @@ __all__ = [
     "ChangeModel",
     "ApprovalModel",
     "ImpactAnalysisModel",
-    # Inventory
-    "InventoryLocationModel",
-    "InventoryItemModel",
-    "InventoryTransactionModel",
-    # Procurement
-    "VendorModel",
-    "PriceAgreementModel",
-    "PurchaseOrderModel",
-    "POItemModel",
-    "ReceiptModel",
-    "ReceiptItemModel",
+    # Requirements
+    "RequirementModel",
+    "RequirementLinkModel",
+    "VerificationRecordModel",
+    # Suppliers
+    "ManufacturerModel",
+    "SupplierVendorModel",
+    "ApprovedManufacturerModel",
+    "ApprovedVendorModel",
+    # Compliance
+    "RegulationModel",
+    "SubstanceDeclarationModel",
+    "ComplianceDeclarationModel",
+    "ComplianceCertificateModel",
+    "ConflictMineralDeclarationModel",
+    # Costing
+    "PartCostModel",
+    "CostElementModel",
+    "CostVarianceModel",
+    "ShouldCostAnalysisModel",
+    # Service Bulletins
+    "ServiceBulletinModel",
+    "BulletinComplianceModel",
+    "MaintenanceScheduleModel",
+    "UnitConfigurationModel",
+    # Projects
+    "ProjectModel",
+    "MilestoneModel",
+    "DeliverableModel",
+    # Integrations
+    "SyncLogEntryModel",
 ]

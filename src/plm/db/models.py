@@ -29,10 +29,23 @@ from .base import Base
 from ..parts.models import PartStatus, PartType, UnitOfMeasure
 from ..boms.models import BOMType, Effectivity
 from ..changes.models import ChangeReason, ChangeType, ChangeUrgency, ECOStatus
-from ..inventory.models import TransactionType
-from ..procurement.models import POStatus
 from ..documents.models import DocumentType, DocumentStatus, CheckoutStatus
 from ..ipc.models import EffectivityType
+from ..requirements.models import (
+    RequirementType, RequirementStatus, RequirementPriority,
+    VerificationMethod, VerificationStatus
+)
+from ..suppliers.models import ApprovalStatus, SupplierTier, QualificationStatus
+from ..compliance.models import (
+    RegulationType, ComplianceStatus as ComplianceDeclarationStatus,
+    CertificateStatus, SubstanceCategory
+)
+from ..costing.models import CostType, CostVarianceType, CostEstimateStatus
+from ..service_bulletins.models import (
+    BulletinType, BulletinStatus, ComplianceStatus as BulletinComplianceStatus
+)
+from ..projects.models import ProjectStatus, ProjectPhase, MilestoneStatus, DeliverableType
+from ..integrations.models import SyncStatus, SyncDirection
 
 
 # =============================================================================
@@ -105,9 +118,6 @@ class PartModel(Base):
         back_populates="part", cascade="all, delete-orphan"
     )
     bom_items: Mapped[list["BOMItemModel"]] = relationship(back_populates="part")
-    inventory_items: Mapped[list["InventoryItemModel"]] = relationship(
-        back_populates="part"
-    )
 
     @property
     def full_part_number(self) -> str:
@@ -389,353 +399,6 @@ class ImpactAnalysisModel(Base):
     )
 
 
-# =============================================================================
-# Inventory Models
-# =============================================================================
-
-
-class InventoryLocationModel(Base):
-    """Inventory location ORM model."""
-
-    __tablename__ = "inventory_locations"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    location_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    address: Mapped[Optional[str]] = mapped_column(Text)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
-    vendor_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
-
-    # Relationships
-    inventory_items: Mapped[list["InventoryItemModel"]] = relationship(
-        back_populates="location"
-    )
-
-
-class InventoryItemModel(Base):
-    """Inventory record per part/location."""
-
-    __tablename__ = "inventory_items"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    part_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("parts.id"), nullable=False, index=True
-    )
-    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
-    location_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("inventory_locations.id"), nullable=False, index=True
-    )
-
-    on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-    allocated: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-    on_order: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-
-    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-    total_value: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-
-    last_count_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    last_receipt_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    last_issue_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-
-    reorder_point: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
-    reorder_qty: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
-
-    # Relationships
-    part: Mapped["PartModel"] = relationship(back_populates="inventory_items")
-    location: Mapped["InventoryLocationModel"] = relationship(
-        back_populates="inventory_items"
-    )
-
-    @property
-    def available(self) -> Decimal:
-        return self.on_hand - self.allocated
-
-    @property
-    def projected(self) -> Decimal:
-        return self.on_hand + self.on_order - self.allocated
-
-
-class InventoryTransactionModel(Base):
-    """Inventory transaction (immutable audit trail)."""
-
-    __tablename__ = "inventory_transactions"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    transaction_type: Mapped[TransactionType] = mapped_column(
-        Enum(TransactionType), nullable=False
-    )
-    part_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
-
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    unit_of_measure: Mapped[str] = mapped_column(String(10), nullable=False)
-
-    location_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    from_location_id: Mapped[Optional[str]] = mapped_column(String(36))
-    to_location_id: Mapped[Optional[str]] = mapped_column(String(36))
-
-    po_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
-    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
-    work_order_id: Mapped[Optional[str]] = mapped_column(String(36))
-
-    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-    total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-
-    transaction_date: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now, index=True
-    )
-    created_by: Mapped[str] = mapped_column(String(100), default="")
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    lot_number: Mapped[Optional[str]] = mapped_column(String(100))
-    serial_number: Mapped[Optional[str]] = mapped_column(String(100))
-
-
-# =============================================================================
-# Procurement Models
-# =============================================================================
-
-
-class VendorModel(Base):
-    """Vendor/supplier ORM model."""
-
-    __tablename__ = "vendors"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    vendor_code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
-
-    address: Mapped[Optional[str]] = mapped_column(Text)
-    city: Mapped[Optional[str]] = mapped_column(String(100))
-    state: Mapped[Optional[str]] = mapped_column(String(50))
-    postal_code: Mapped[Optional[str]] = mapped_column(String(20))
-    country: Mapped[str] = mapped_column(String(50), default="USA")
-    phone: Mapped[Optional[str]] = mapped_column(String(50))
-    email: Mapped[Optional[str]] = mapped_column(String(255))
-    website: Mapped[Optional[str]] = mapped_column(String(500))
-
-    contacts: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-
-    payment_terms: Mapped[str] = mapped_column(String(50), default="Net 30")
-    freight_terms: Mapped[str] = mapped_column(String(50), default="FOB Origin")
-    minimum_order: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-
-    categories: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-
-    on_time_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
-    quality_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
-    avg_lead_time_days: Mapped[int] = mapped_column(Integer, default=0)
-
-    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
-    insurance_expiry: Mapped[Optional[date]] = mapped_column(Date)
-    w9_on_file: Mapped[bool] = mapped_column(Boolean, default=False)
-    certifications: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Relationships
-    purchase_orders: Mapped[list["PurchaseOrderModel"]] = relationship(
-        back_populates="vendor"
-    )
-    price_agreements: Mapped[list["PriceAgreementModel"]] = relationship(
-        back_populates="vendor"
-    )
-
-
-class PriceAgreementModel(Base):
-    """Vendor price agreement ORM model."""
-
-    __tablename__ = "price_agreements"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    vendor_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("vendors.id"), nullable=False, index=True
-    )
-    part_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
-
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="USD")
-
-    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
-    expiration_date: Mapped[Optional[date]] = mapped_column(Date)
-
-    min_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"))
-    price_breaks: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
-
-    contract_number: Mapped[Optional[str]] = mapped_column(String(50))
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Relationships
-    vendor: Mapped["VendorModel"] = relationship(back_populates="price_agreements")
-
-
-class PurchaseOrderModel(Base):
-    """Purchase order ORM model."""
-
-    __tablename__ = "purchase_orders"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    po_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    vendor_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("vendors.id"), nullable=False, index=True
-    )
-    vendor_name: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    status: Mapped[POStatus] = mapped_column(
-        Enum(POStatus), default=POStatus.DRAFT, index=True
-    )
-
-    subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-    tax: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-    shipping: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-
-    order_date: Mapped[Optional[date]] = mapped_column(Date)
-    required_date: Mapped[Optional[date]] = mapped_column(Date)
-    promised_date: Mapped[Optional[date]] = mapped_column(Date)
-
-    ship_to_location_id: Mapped[Optional[str]] = mapped_column(String(36))
-    ship_to_address: Mapped[Optional[str]] = mapped_column(Text)
-    freight_terms: Mapped[str] = mapped_column(String(50), default="FOB Origin")
-    payment_terms: Mapped[str] = mapped_column(String(50), default="Net 30")
-
-    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
-    requisition_id: Mapped[Optional[str]] = mapped_column(String(36))
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    created_by: Mapped[str] = mapped_column(String(100), default="")
-    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now, onupdate=datetime.now
-    )
-
-    # Relationships
-    vendor: Mapped["VendorModel"] = relationship(back_populates="purchase_orders")
-    items: Mapped[list["POItemModel"]] = relationship(
-        back_populates="purchase_order", cascade="all, delete-orphan"
-    )
-    receipts: Mapped[list["ReceiptModel"]] = relationship(
-        back_populates="purchase_order"
-    )
-
-
-class POItemModel(Base):
-    """Purchase order line item."""
-
-    __tablename__ = "po_items"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    po_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("purchase_orders.id"), nullable=False, index=True
-    )
-    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    part_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    unit_of_measure: Mapped[str] = mapped_column(String(10), nullable=False)
-    received_quantity: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4), default=Decimal("0")
-    )
-
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
-    extended_price: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), default=Decimal("0")
-    )
-
-    required_date: Mapped[Optional[date]] = mapped_column(Date)
-    promised_date: Mapped[Optional[date]] = mapped_column(Date)
-
-    project_id: Mapped[Optional[str]] = mapped_column(String(36))
-    planned_order_id: Mapped[Optional[str]] = mapped_column(String(36))
-
-    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # Relationships
-    purchase_order: Mapped["PurchaseOrderModel"] = relationship(back_populates="items")
-
-    @property
-    def open_quantity(self) -> Decimal:
-        return self.quantity - self.received_quantity
-
-
-class ReceiptModel(Base):
-    """Goods receipt ORM model."""
-
-    __tablename__ = "receipts"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    receipt_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    po_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("purchase_orders.id"), nullable=False, index=True
-    )
-    po_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    vendor_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-
-    receipt_date: Mapped[date] = mapped_column(Date, default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-
-    packing_slip: Mapped[Optional[str]] = mapped_column(String(100))
-    carrier: Mapped[Optional[str]] = mapped_column(String(100))
-    tracking_number: Mapped[Optional[str]] = mapped_column(String(100))
-
-    received_by: Mapped[str] = mapped_column(String(100), default="")
-    location_id: Mapped[Optional[str]] = mapped_column(String(36))
-
-    is_complete: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Relationships
-    purchase_order: Mapped["PurchaseOrderModel"] = relationship(
-        back_populates="receipts"
-    )
-    items: Mapped[list["ReceiptItemModel"]] = relationship(
-        back_populates="receipt", cascade="all, delete-orphan"
-    )
-
-
-class ReceiptItemModel(Base):
-    """Receipt line item."""
-
-    __tablename__ = "receipt_items"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    receipt_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("receipts.id"), nullable=False, index=True
-    )
-    po_item_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    part_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
-
-    quantity_received: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    quantity_accepted: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4), default=Decimal("0")
-    )
-    quantity_rejected: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4), default=Decimal("0")
-    )
-    unit_of_measure: Mapped[str] = mapped_column(String(10), default="EA")
-
-    lot_number: Mapped[Optional[str]] = mapped_column(String(100))
-    serial_numbers: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-
-    location_id: Mapped[Optional[str]] = mapped_column(String(36))
-
-    inspection_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    inspection_status: Mapped[Optional[str]] = mapped_column(String(50))
-    inspection_notes: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Relationships
-    receipt: Mapped["ReceiptModel"] = relationship(back_populates="items")
 
 
 # =============================================================================
@@ -1058,3 +721,911 @@ class FigureHotspotModel(Base):
     # Relationships
     figure: Mapped["IPCFigureModel"] = relationship(back_populates="hotspots")
     bom_item: Mapped["BOMItemModel"] = relationship()
+
+
+# =============================================================================
+# Requirements Models
+# =============================================================================
+
+
+class RequirementModel(Base):
+    """Requirement ORM model."""
+
+    __tablename__ = "requirements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    requirement_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+
+    requirement_type: Mapped[RequirementType] = mapped_column(
+        Enum(RequirementType), default=RequirementType.FUNCTIONAL
+    )
+    status: Mapped[RequirementStatus] = mapped_column(
+        Enum(RequirementStatus), default=RequirementStatus.DRAFT, index=True
+    )
+    priority: Mapped[RequirementPriority] = mapped_column(
+        Enum(RequirementPriority), default=RequirementPriority.MUST_HAVE
+    )
+
+    title: Mapped[str] = mapped_column(String(255), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    acceptance_criteria: Mapped[str] = mapped_column(Text, default="")
+
+    source: Mapped[str] = mapped_column(String(255), default="")
+    source_document: Mapped[Optional[str]] = mapped_column(String(255))
+    source_section: Mapped[Optional[str]] = mapped_column(String(100))
+    customer_id: Mapped[Optional[str]] = mapped_column(String(36))
+
+    verification_method: Mapped[VerificationMethod] = mapped_column(
+        Enum(VerificationMethod), default=VerificationMethod.TEST
+    )
+    verification_procedure: Mapped[Optional[str]] = mapped_column(String(255))
+
+    parent_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    derived_from: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    project_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    phase: Mapped[Optional[str]] = mapped_column(String(50))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    attachments: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+
+class RequirementLinkModel(Base):
+    """Requirement traceability link ORM model."""
+
+    __tablename__ = "requirement_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    requirement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("requirements.id"), nullable=False, index=True
+    )
+
+    link_type: Mapped[str] = mapped_column(String(50), nullable=False)  # part, document, test
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    target_number: Mapped[Optional[str]] = mapped_column(String(100))
+    target_revision: Mapped[Optional[str]] = mapped_column(String(20))
+
+    relationship: Mapped[str] = mapped_column(String(50), default="implements")
+    coverage: Mapped[str] = mapped_column(String(20), default="full")
+    coverage_notes: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+
+class VerificationRecordModel(Base):
+    """Verification record ORM model."""
+
+    __tablename__ = "verification_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    verification_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+
+    requirement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("requirements.id"), nullable=False, index=True
+    )
+    requirement_number: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    method: Mapped[VerificationMethod] = mapped_column(Enum(VerificationMethod), nullable=False)
+    procedure_id: Mapped[Optional[str]] = mapped_column(String(36))
+    procedure_number: Mapped[Optional[str]] = mapped_column(String(100))
+
+    status: Mapped[VerificationStatus] = mapped_column(
+        Enum(VerificationStatus), default=VerificationStatus.NOT_STARTED, index=True
+    )
+
+    result_summary: Mapped[str] = mapped_column(Text, default="")
+    pass_fail: Mapped[Optional[bool]] = mapped_column(Boolean)
+    actual_value: Mapped[Optional[str]] = mapped_column(String(255))
+    expected_value: Mapped[Optional[str]] = mapped_column(String(255))
+    deviation: Mapped[Optional[str]] = mapped_column(Text)
+
+    evidence_documents: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    test_report_id: Mapped[Optional[str]] = mapped_column(String(36))
+
+    verified_by: Mapped[Optional[str]] = mapped_column(String(100))
+    verified_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    witness: Mapped[Optional[str]] = mapped_column(String(100))
+
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+# =============================================================================
+# Supplier Models (AML/AVL)
+# =============================================================================
+
+
+class ManufacturerModel(Base):
+    """Manufacturer ORM model."""
+
+    __tablename__ = "manufacturers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    manufacturer_code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    address: Mapped[str] = mapped_column(Text, default="")
+    country: Mapped[str] = mapped_column(String(100), default="")
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(50))
+    website: Mapped[Optional[str]] = mapped_column(String(500))
+
+    status: Mapped[ApprovalStatus] = mapped_column(
+        Enum(ApprovalStatus), default=ApprovalStatus.PENDING, index=True
+    )
+
+    certifications: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    cage_code: Mapped[Optional[str]] = mapped_column(String(20))
+    duns_number: Mapped[Optional[str]] = mapped_column(String(20))
+
+    capabilities: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    specialties: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    last_audit_date: Mapped[Optional[date]] = mapped_column(Date)
+    next_audit_date: Mapped[Optional[date]] = mapped_column(Date)
+    audit_score: Mapped[Optional[int]] = mapped_column(Integer)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    approved_date: Mapped[Optional[date]] = mapped_column(Date)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class SupplierVendorModel(Base):
+    """Vendor/distributor ORM model for AVL."""
+
+    __tablename__ = "supplier_vendors"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    vendor_code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    address: Mapped[str] = mapped_column(Text, default="")
+    country: Mapped[str] = mapped_column(String(100), default="")
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(50))
+    website: Mapped[Optional[str]] = mapped_column(String(500))
+
+    status: Mapped[ApprovalStatus] = mapped_column(
+        Enum(ApprovalStatus), default=ApprovalStatus.PENDING, index=True
+    )
+    tier: Mapped[SupplierTier] = mapped_column(
+        Enum(SupplierTier), default=SupplierTier.APPROVED
+    )
+
+    payment_terms: Mapped[str] = mapped_column(String(50), default="")
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    minimum_order: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    on_time_delivery_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    quality_rating: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer)
+
+    certifications: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    duns_number: Mapped[Optional[str]] = mapped_column(String(20))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    approved_date: Mapped[Optional[date]] = mapped_column(Date)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class ApprovedManufacturerModel(Base):
+    """AML entry - approved manufacturer for a part."""
+
+    __tablename__ = "approved_manufacturers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    manufacturer_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manufacturers.id"), nullable=False, index=True
+    )
+    manufacturer_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    manufacturer_part_number: Mapped[str] = mapped_column(String(100), default="")
+
+    status: Mapped[ApprovalStatus] = mapped_column(
+        Enum(ApprovalStatus), default=ApprovalStatus.PENDING, index=True
+    )
+    qualification_status: Mapped[QualificationStatus] = mapped_column(
+        Enum(QualificationStatus), default=QualificationStatus.NOT_STARTED
+    )
+
+    preference_rank: Mapped[int] = mapped_column(Integer, default=1)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    qualification_date: Mapped[Optional[date]] = mapped_column(Date)
+    qualification_report: Mapped[Optional[str]] = mapped_column(String(255))
+    qualification_expires: Mapped[Optional[date]] = mapped_column(Date)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class ApprovedVendorModel(Base):
+    """AVL entry - approved vendor for a part."""
+
+    __tablename__ = "approved_vendors"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    vendor_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("supplier_vendors.id"), nullable=False, index=True
+    )
+    vendor_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    vendor_part_number: Mapped[str] = mapped_column(String(100), default="")
+
+    status: Mapped[ApprovalStatus] = mapped_column(
+        Enum(ApprovalStatus), default=ApprovalStatus.PENDING, index=True
+    )
+
+    preference_rank: Mapped[int] = mapped_column(Integer, default=1)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    minimum_order_qty: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"))
+    lead_time_days: Mapped[int] = mapped_column(Integer, default=0)
+    price_valid_until: Mapped[Optional[date]] = mapped_column(Date)
+
+    on_time_delivery_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    quality_reject_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+# =============================================================================
+# Compliance Models
+# =============================================================================
+
+
+class RegulationModel(Base):
+    """Regulation ORM model."""
+
+    __tablename__ = "regulations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    regulation_code: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    regulation_type: Mapped[RegulationType] = mapped_column(
+        Enum(RegulationType), nullable=False, index=True
+    )
+
+    description: Mapped[str] = mapped_column(Text, default="")
+    authority: Mapped[str] = mapped_column(String(255), default="")
+    effective_date: Mapped[Optional[date]] = mapped_column(Date)
+    version: Mapped[str] = mapped_column(String(50), default="")
+
+    regions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    product_categories: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    exemptions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    reference_url: Mapped[Optional[str]] = mapped_column(String(500))
+    reference_document: Mapped[Optional[str]] = mapped_column(String(255))
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class SubstanceDeclarationModel(Base):
+    """Substance declaration ORM model."""
+
+    __tablename__ = "substance_declarations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    substance_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    cas_number: Mapped[Optional[str]] = mapped_column(String(50))
+    category: Mapped[SubstanceCategory] = mapped_column(
+        Enum(SubstanceCategory), default=SubstanceCategory.OTHER
+    )
+
+    concentration_ppm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    concentration_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    threshold_ppm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    above_threshold: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    component: Mapped[str] = mapped_column(String(255), default="")
+    homogeneous_material: Mapped[str] = mapped_column(String(255), default="")
+
+    source: Mapped[str] = mapped_column(String(100), default="")
+    source_document: Mapped[Optional[str]] = mapped_column(String(255))
+    declaration_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ComplianceDeclarationModel(Base):
+    """Compliance declaration ORM model."""
+
+    __tablename__ = "compliance_declarations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    regulation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("regulations.id"), nullable=False, index=True
+    )
+    regulation_code: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    status: Mapped[ComplianceDeclarationStatus] = mapped_column(
+        Enum(ComplianceDeclarationStatus), default=ComplianceDeclarationStatus.UNKNOWN, index=True
+    )
+
+    exemption_code: Mapped[Optional[str]] = mapped_column(String(50))
+    exemption_expiry: Mapped[Optional[date]] = mapped_column(Date)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    certificate_id: Mapped[Optional[str]] = mapped_column(String(36))
+    test_report_id: Mapped[Optional[str]] = mapped_column(String(36))
+    supplier_declaration: Mapped[Optional[str]] = mapped_column(String(255))
+
+    declared_by: Mapped[Optional[str]] = mapped_column(String(100))
+    declared_date: Mapped[Optional[date]] = mapped_column(Date)
+    verified_by: Mapped[Optional[str]] = mapped_column(String(100))
+    verified_date: Mapped[Optional[date]] = mapped_column(Date)
+    expires: Mapped[Optional[date]] = mapped_column(Date)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ComplianceCertificateModel(Base):
+    """Compliance certificate ORM model."""
+
+    __tablename__ = "compliance_certificates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    certificate_number: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    regulation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("regulations.id"), nullable=False, index=True
+    )
+    regulation_code: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    part_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    product_family: Mapped[Optional[str]] = mapped_column(String(255))
+
+    status: Mapped[CertificateStatus] = mapped_column(
+        Enum(CertificateStatus), default=CertificateStatus.DRAFT, index=True
+    )
+    issue_date: Mapped[Optional[date]] = mapped_column(Date)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+    issued_by: Mapped[str] = mapped_column(String(255), default="")
+    certificate_url: Mapped[Optional[str]] = mapped_column(String(500))
+
+    attachments: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ConflictMineralDeclarationModel(Base):
+    """Conflict mineral (3TG) declaration ORM model."""
+
+    __tablename__ = "conflict_mineral_declarations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    contains_tin: Mapped[bool] = mapped_column(Boolean, default=False)
+    contains_tantalum: Mapped[bool] = mapped_column(Boolean, default=False)
+    contains_tungsten: Mapped[bool] = mapped_column(Boolean, default=False)
+    contains_gold: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    conflict_free: Mapped[Optional[bool]] = mapped_column(Boolean)
+    smelter_list: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    countries_of_origin: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    cmrt_version: Mapped[Optional[str]] = mapped_column(String(50))
+    cmrt_document: Mapped[Optional[str]] = mapped_column(String(255))
+    declaration_date: Mapped[Optional[date]] = mapped_column(Date)
+    declared_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+# =============================================================================
+# Costing Models
+# =============================================================================
+
+
+class PartCostModel(Base):
+    """Part cost breakdown ORM model."""
+
+    __tablename__ = "part_costs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    part_revision: Mapped[str] = mapped_column(String(20), default="")
+
+    status: Mapped[CostEstimateStatus] = mapped_column(
+        Enum(CostEstimateStatus), default=CostEstimateStatus.DRAFT, index=True
+    )
+
+    material_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    labor_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    overhead_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+
+    target_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    should_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+
+    selling_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    margin_percent: Mapped[Optional[float]] = mapped_column(Numeric(8, 4))
+
+    lot_size: Mapped[int] = mapped_column(Integer, default=1)
+    annual_volume: Mapped[Optional[int]] = mapped_column(Integer)
+
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("1"))
+
+    effective_date: Mapped[Optional[date]] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class CostElementModel(Base):
+    """Cost element (line item) ORM model."""
+
+    __tablename__ = "cost_elements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_cost_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("part_costs.id"), nullable=False, index=True
+    )
+
+    cost_type: Mapped[CostType] = mapped_column(Enum(CostType), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), default="")
+
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"))
+    extended_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+
+    rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    unit_of_measure: Mapped[str] = mapped_column(String(10), default="EA")
+    basis: Mapped[str] = mapped_column(String(255), default="")
+
+    source: Mapped[str] = mapped_column(String(100), default="")
+    vendor_id: Mapped[Optional[str]] = mapped_column(String(36))
+    quote_number: Mapped[Optional[str]] = mapped_column(String(50))
+    quote_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    target_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    variance: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    variance_percent: Mapped[Optional[float]] = mapped_column(Numeric(8, 4))
+
+
+class CostVarianceModel(Base):
+    """Cost variance analysis ORM model."""
+
+    __tablename__ = "cost_variances"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    period: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+
+    standard_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    actual_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    variance: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    variance_percent: Mapped[float] = mapped_column(Numeric(8, 4), default=0.0)
+
+    variance_type: Mapped[CostVarianceType] = mapped_column(
+        Enum(CostVarianceType), default=CostVarianceType.MATERIAL_PRICE
+    )
+    favorable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    root_cause: Mapped[str] = mapped_column(Text, default="")
+    corrective_action: Mapped[str] = mapped_column(Text, default="")
+
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"))
+    total_variance: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ShouldCostAnalysisModel(Base):
+    """Should-cost analysis ORM model."""
+
+    __tablename__ = "should_cost_analyses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    analysis_date: Mapped[date] = mapped_column(Date, default=date.today)
+    analyst: Mapped[str] = mapped_column(String(100), default="")
+    methodology: Mapped[str] = mapped_column(String(50), default="")
+
+    should_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+
+    raw_material: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    material_processing: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    conversion_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    profit_margin: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+    logistics: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0"))
+
+    current_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    savings_opportunity: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+    savings_percent: Mapped[Optional[float]] = mapped_column(Numeric(8, 4))
+
+    assumptions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    data_sources: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+# =============================================================================
+# Service Bulletin Models
+# =============================================================================
+
+
+class ServiceBulletinModel(Base):
+    """Service bulletin ORM model."""
+
+    __tablename__ = "service_bulletins"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    bulletin_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+
+    bulletin_type: Mapped[BulletinType] = mapped_column(Enum(BulletinType), nullable=False)
+    status: Mapped[BulletinStatus] = mapped_column(
+        Enum(BulletinStatus), default=BulletinStatus.DRAFT, index=True
+    )
+
+    title: Mapped[str] = mapped_column(String(255), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    safety_issue: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    action_required: Mapped[str] = mapped_column(Text, default="")
+    action_procedure: Mapped[str] = mapped_column(Text, default="")
+    estimated_time: Mapped[Optional[str]] = mapped_column(String(50))
+    special_tools: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    required_parts: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    affected_parts: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    affected_part_numbers: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    serial_range_start: Mapped[Optional[str]] = mapped_column(String(50))
+    serial_range_end: Mapped[Optional[str]] = mapped_column(String(50))
+    effectivity_start: Mapped[Optional[date]] = mapped_column(Date)
+    effectivity_end: Mapped[Optional[date]] = mapped_column(Date)
+    affected_configurations: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    compliance_deadline: Mapped[Optional[date]] = mapped_column(Date)
+    flight_hours_limit: Mapped[Optional[int]] = mapped_column(Integer)
+    cycles_limit: Mapped[Optional[int]] = mapped_column(Integer)
+
+    related_eco_id: Mapped[Optional[str]] = mapped_column(String(36))
+    related_ncr_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    supersedes: Mapped[Optional[str]] = mapped_column(String(50))
+    superseded_by: Mapped[Optional[str]] = mapped_column(String(50))
+
+    attachments: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    effective_date: Mapped[Optional[date]] = mapped_column(Date)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+
+
+class BulletinComplianceModel(Base):
+    """Bulletin compliance record ORM model."""
+
+    __tablename__ = "bulletin_compliance"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    bulletin_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("service_bulletins.id"), nullable=False, index=True
+    )
+    bulletin_number: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    serial_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    part_id: Mapped[Optional[str]] = mapped_column(String(36))
+    part_number: Mapped[Optional[str]] = mapped_column(String(100))
+
+    status: Mapped[BulletinComplianceStatus] = mapped_column(
+        Enum(BulletinComplianceStatus), default=BulletinComplianceStatus.PENDING, index=True
+    )
+
+    completed_date: Mapped[Optional[date]] = mapped_column(Date)
+    completed_by: Mapped[Optional[str]] = mapped_column(String(100))
+    work_order_number: Mapped[Optional[str]] = mapped_column(String(50))
+    labor_hours: Mapped[Optional[float]] = mapped_column(Numeric(8, 2))
+
+    parts_used: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    waived: Mapped[bool] = mapped_column(Boolean, default=False)
+    waiver_reason: Mapped[Optional[str]] = mapped_column(Text)
+    waiver_approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    waiver_expiry: Mapped[Optional[date]] = mapped_column(Date)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+    attachments: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class MaintenanceScheduleModel(Base):
+    """Maintenance schedule ORM model."""
+
+    __tablename__ = "maintenance_schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    schedule_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+
+    part_id: Mapped[Optional[str]] = mapped_column(String(36))
+    part_number: Mapped[Optional[str]] = mapped_column(String(100))
+    system: Mapped[str] = mapped_column(String(100), default="")
+    component: Mapped[str] = mapped_column(String(255), default="")
+
+    interval_type: Mapped[str] = mapped_column(String(20), default="calendar")
+    interval_value: Mapped[int] = mapped_column(Integer, default=0)
+    interval_unit: Mapped[str] = mapped_column(String(20), default="")
+
+    task_description: Mapped[str] = mapped_column(Text, default="")
+    procedure_reference: Mapped[Optional[str]] = mapped_column(String(255))
+    estimated_time: Mapped[Optional[str]] = mapped_column(String(50))
+
+    required_parts: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    consumables: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class UnitConfigurationModel(Base):
+    """Unit (serialized product) configuration ORM model."""
+
+    __tablename__ = "unit_configurations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    serial_number: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    current_revision: Mapped[str] = mapped_column(String(20), default="")
+    configuration_id: Mapped[Optional[str]] = mapped_column(String(36))
+    build_date: Mapped[Optional[date]] = mapped_column(Date)
+    delivery_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    total_hours: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    total_cycles: Mapped[int] = mapped_column(Integer, default=0)
+    last_updated: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    owner_id: Mapped[Optional[str]] = mapped_column(String(36))
+    owner_name: Mapped[str] = mapped_column(String(255), default="")
+    location: Mapped[str] = mapped_column(String(255), default="")
+
+    applied_bulletins: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    pending_bulletins: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    last_maintenance_date: Mapped[Optional[date]] = mapped_column(Date)
+    next_maintenance_due: Mapped[Optional[date]] = mapped_column(Date)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+# =============================================================================
+# Project Models
+# =============================================================================
+
+
+class ProjectModel(Base):
+    """Project ORM model."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    status: Mapped[ProjectStatus] = mapped_column(
+        Enum(ProjectStatus), default=ProjectStatus.PROPOSED, index=True
+    )
+    phase: Mapped[ProjectPhase] = mapped_column(
+        Enum(ProjectPhase), default=ProjectPhase.CONCEPT
+    )
+    project_type: Mapped[str] = mapped_column(String(50), default="")
+
+    description: Mapped[str] = mapped_column(Text, default="")
+    objectives: Mapped[str] = mapped_column(Text, default="")
+    scope: Mapped[str] = mapped_column(Text, default="")
+
+    program_id: Mapped[Optional[str]] = mapped_column(String(36))
+    parent_project_id: Mapped[Optional[str]] = mapped_column(String(36))
+
+    customer_id: Mapped[Optional[str]] = mapped_column(String(36))
+    customer_name: Mapped[str] = mapped_column(String(255), default="")
+    contract_number: Mapped[Optional[str]] = mapped_column(String(100))
+
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    target_end_date: Mapped[Optional[date]] = mapped_column(Date)
+    actual_end_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    budget: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    actual_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+
+    project_manager_id: Mapped[Optional[str]] = mapped_column(String(36))
+    project_manager_name: Mapped[str] = mapped_column(String(255), default="")
+    team_members: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    part_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    bom_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    document_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    eco_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+
+class MilestoneModel(Base):
+    """Project milestone ORM model."""
+
+    __tablename__ = "milestones"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False, index=True
+    )
+    milestone_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    status: Mapped[MilestoneStatus] = mapped_column(
+        Enum(MilestoneStatus), default=MilestoneStatus.NOT_STARTED, index=True
+    )
+    phase: Mapped[Optional[ProjectPhase]] = mapped_column(Enum(ProjectPhase))
+
+    description: Mapped[str] = mapped_column(Text, default="")
+    success_criteria: Mapped[str] = mapped_column(Text, default="")
+
+    planned_date: Mapped[Optional[date]] = mapped_column(Date)
+    forecast_date: Mapped[Optional[date]] = mapped_column(Date)
+    actual_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+    predecessor_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    review_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_type: Mapped[str] = mapped_column(String(50), default="")
+    reviewers: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    review_notes: Mapped[str] = mapped_column(Text, default="")
+
+    deliverable_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    completed_by: Mapped[Optional[str]] = mapped_column(String(100))
+    completion_notes: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class DeliverableModel(Base):
+    """Project deliverable ORM model."""
+
+    __tablename__ = "deliverables"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False, index=True
+    )
+    milestone_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("milestones.id"), index=True
+    )
+    deliverable_number: Mapped[str] = mapped_column(String(50), default="")
+    name: Mapped[str] = mapped_column(String(255), default="")
+
+    deliverable_type: Mapped[DeliverableType] = mapped_column(
+        Enum(DeliverableType), default=DeliverableType.DOCUMENT
+    )
+
+    description: Mapped[str] = mapped_column(Text, default="")
+    acceptance_criteria: Mapped[str] = mapped_column(Text, default="")
+
+    status: Mapped[MilestoneStatus] = mapped_column(
+        Enum(MilestoneStatus), default=MilestoneStatus.NOT_STARTED, index=True
+    )
+    percent_complete: Mapped[int] = mapped_column(Integer, default=0)
+
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    submitted_date: Mapped[Optional[date]] = mapped_column(Date)
+    accepted_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(36))
+    assigned_name: Mapped[str] = mapped_column(String(255), default="")
+
+    part_id: Mapped[Optional[str]] = mapped_column(String(36))
+    document_id: Mapped[Optional[str]] = mapped_column(String(36))
+    bom_id: Mapped[Optional[str]] = mapped_column(String(36))
+
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approval_notes: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+# =============================================================================
+# Integration Models
+# =============================================================================
+
+
+class SyncLogEntryModel(Base):
+    """MRP sync log entry ORM model."""
+
+    __tablename__ = "sync_log_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+    direction: Mapped[SyncDirection] = mapped_column(Enum(SyncDirection), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    entity_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    status: Mapped[SyncStatus] = mapped_column(Enum(SyncStatus), nullable=False, index=True)
+
+    action: Mapped[str] = mapped_column(String(50), default="")
+    message: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[Optional[str]] = mapped_column(Text)
+
+    request_payload: Mapped[Optional[dict]] = mapped_column(JSON)
+    response_payload: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer)

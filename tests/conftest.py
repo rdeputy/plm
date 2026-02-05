@@ -18,16 +18,9 @@ from plm.db.models import (
     BOMModel,
     BOMItemModel,
     ChangeOrderModel,
-    InventoryLocationModel,
-    InventoryItemModel,
-    VendorModel,
-    PurchaseOrderModel,
-    POItemModel,
 )
 from plm.parts.models import Part, PartType, PartStatus, UnitOfMeasure
 from plm.boms.models import BOM, BOMItem, BOMType, Effectivity
-from plm.inventory.models import InventoryLocation, InventoryItem, TransactionType
-from plm.procurement.models import Vendor, PurchaseOrder, POItem, POStatus
 
 
 @pytest.fixture(scope="function")
@@ -196,109 +189,3 @@ def sample_bom(multiple_parts, session) -> BOMModel:
     session.commit()
 
     return bom
-
-
-# =============================================================================
-# Inventory Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def sample_location(session) -> InventoryLocationModel:
-    """Create a sample inventory location."""
-    location = InventoryLocationModel(
-        id=str(uuid4()),
-        name="Main Warehouse",
-        location_type="warehouse",
-        address="123 Industrial Blvd, City, ST 12345",
-        is_active=True,
-    )
-    session.add(location)
-    session.commit()
-    return location
-
-
-@pytest.fixture
-def sample_inventory_item(session, sample_part_model, sample_location) -> InventoryItemModel:
-    """Create a sample inventory item."""
-    item = InventoryItemModel(
-        id=str(uuid4()),
-        part_id=sample_part_model.id,
-        part_number=sample_part_model.part_number,
-        location_id=sample_location.id,
-        on_hand=Decimal("100"),
-        allocated=Decimal("20"),
-        on_order=Decimal("50"),
-        unit_cost=Decimal("8.99"),
-        total_value=Decimal("899.00"),
-        reorder_point=Decimal("25"),
-        reorder_qty=Decimal("100"),
-    )
-    session.add(item)
-    session.commit()
-    return item
-
-
-# =============================================================================
-# Procurement Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def sample_vendor(session) -> VendorModel:
-    """Create a sample vendor."""
-    vendor = VendorModel(
-        id=str(uuid4()),
-        name="ABC Building Supply",
-        vendor_code="ABC001",
-        address="456 Supplier Ave",
-        city="Commerce City",
-        state="CO",
-        postal_code="80022",
-        phone="303-555-0100",
-        email="orders@abcsupply.com",
-        payment_terms="Net 30",
-        is_active=True,
-        is_approved=True,
-    )
-    session.add(vendor)
-    session.commit()
-    return vendor
-
-
-@pytest.fixture
-def sample_purchase_order(session, sample_vendor, sample_part_model) -> PurchaseOrderModel:
-    """Create a sample purchase order."""
-    po = PurchaseOrderModel(
-        id=str(uuid4()),
-        po_number="PO-2026-0001",
-        vendor_id=sample_vendor.id,
-        vendor_name=sample_vendor.name,
-        status=POStatus.DRAFT,
-        subtotal=Decimal("899.00"),
-        tax=Decimal("0"),
-        shipping=Decimal("50.00"),
-        total=Decimal("949.00"),
-        order_date=date.today(),
-        required_date=date.today(),
-        created_by="test",
-    )
-    session.add(po)
-    session.flush()
-
-    item = POItemModel(
-        id=str(uuid4()),
-        po_id=po.id,
-        line_number=1,
-        part_id=sample_part_model.id,
-        part_number=sample_part_model.part_number,
-        description=sample_part_model.name,
-        quantity=Decimal("100"),
-        unit_of_measure=UnitOfMeasure.EACH.value,
-        unit_price=Decimal("8.99"),
-        extended_price=Decimal("899.00"),
-    )
-    session.add(item)
-    session.commit()
-
-    return po
