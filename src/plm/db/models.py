@@ -32,6 +32,7 @@ from ..changes.models import ChangeReason, ChangeType, ChangeUrgency, ECOStatus
 from ..inventory.models import TransactionType
 from ..procurement.models import POStatus
 from ..documents.models import DocumentType, DocumentStatus, CheckoutStatus
+from ..ipc.models import EffectivityType
 
 
 # =============================================================================
@@ -867,3 +868,193 @@ class DocumentLinkModel(Base):
     part: Mapped[Optional["PartModel"]] = relationship()
     bom: Mapped[Optional["BOMModel"]] = relationship()
     change_order: Mapped[Optional["ChangeOrderModel"]] = relationship()
+
+
+# =============================================================================
+# IPC Models (Illustrated Parts Catalog)
+# =============================================================================
+
+
+class SupersessionModel(Base):
+    """Part supersession/replacement history."""
+
+    __tablename__ = "supersessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+
+    # Old part being replaced
+    superseded_part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    superseded_part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # New replacement part
+    superseding_part_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("parts.id"), nullable=False, index=True
+    )
+    superseding_part_number: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Supersession details
+    supersession_type: Mapped[str] = mapped_column(
+        String(50), default="replacement"
+    )  # replacement, alternate, upgrade
+    is_interchangeable: Mapped[bool] = mapped_column(Boolean, default=True)
+    quantity_ratio: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=Decimal("1"))
+
+    # Effectivity
+    effective_date: Mapped[Optional[date]] = mapped_column(Date)
+    effective_serial: Mapped[Optional[str]] = mapped_column(String(50))
+
+    # Reason
+    reason: Mapped[str] = mapped_column(Text, default="")
+    change_order_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("change_orders.id")
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Relationships
+    superseded_part: Mapped["PartModel"] = relationship(
+        foreign_keys=[superseded_part_id],
+        backref="superseded_by_records"
+    )
+    superseding_part: Mapped["PartModel"] = relationship(
+        foreign_keys=[superseding_part_id],
+        backref="supersedes_records"
+    )
+    change_order: Mapped[Optional["ChangeOrderModel"]] = relationship()
+
+
+class EffectivityRangeModel(Base):
+    """Effectivity range for parts/BOM items."""
+
+    __tablename__ = "effectivity_ranges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    effectivity_type: Mapped[EffectivityType] = mapped_column(
+        Enum(EffectivityType), nullable=False
+    )
+
+    # Serial/lot ranges
+    serial_from: Mapped[Optional[str]] = mapped_column(String(50))
+    serial_to: Mapped[Optional[str]] = mapped_column(String(50))
+
+    # Date ranges
+    date_from: Mapped[Optional[date]] = mapped_column(Date)
+    date_to: Mapped[Optional[date]] = mapped_column(Date)
+
+    # Model/config codes (JSON arrays)
+    model_codes: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    config_codes: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+    # What this applies to
+    part_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("parts.id"), index=True
+    )
+    bom_item_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("bom_items.id"), index=True
+    )
+
+    # Display
+    display_text: Mapped[str] = mapped_column(String(255), default="All")
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    # Relationships
+    part: Mapped[Optional["PartModel"]] = relationship(
+        backref="effectivity_ranges"
+    )
+    bom_item: Mapped[Optional["BOMItemModel"]] = relationship(
+        backref="effectivity_ranges"
+    )
+
+
+class IPCFigureModel(Base):
+    """IPC figure (exploded view) linking document to BOM."""
+
+    __tablename__ = "ipc_figures"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("documents.id"), nullable=False, index=True
+    )
+    bom_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("boms.id"), nullable=False, index=True
+    )
+
+    figure_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Sheet info
+    sheet_number: Mapped[int] = mapped_column(Integer, default=1)
+    total_sheets: Mapped[int] = mapped_column(Integer, default=1)
+
+    # View type
+    view_type: Mapped[str] = mapped_column(String(50), default="exploded")
+    scale: Mapped[Optional[str]] = mapped_column(String(20))
+
+    # Status
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True)
+    superseded_by: Mapped[Optional[str]] = mapped_column(String(36))
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Relationships
+    document: Mapped["DocumentModel"] = relationship()
+    bom: Mapped["BOMModel"] = relationship()
+    hotspots: Mapped[list["FigureHotspotModel"]] = relationship(
+        back_populates="figure", cascade="all, delete-orphan"
+    )
+
+
+class FigureHotspotModel(Base):
+    """Clickable hotspot on an IPC figure."""
+
+    __tablename__ = "figure_hotspots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    figure_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("ipc_figures.id"), nullable=False, index=True
+    )
+    bom_item_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("bom_items.id"), nullable=False, index=True
+    )
+
+    # Callout numbers
+    index_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    find_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Position (normalized 0-1)
+    x: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    y: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+
+    # Leader line target (optional)
+    target_x: Mapped[Optional[float]] = mapped_column(Numeric(6, 4))
+    target_y: Mapped[Optional[float]] = mapped_column(Numeric(6, 4))
+
+    # Display
+    shape: Mapped[str] = mapped_column(String(20), default="circle")
+    size: Mapped[float] = mapped_column(Numeric(4, 3), default=0.02)
+
+    # Denormalized part info
+    part_number: Mapped[Optional[str]] = mapped_column(String(100))
+    part_name: Mapped[Optional[str]] = mapped_column(String(255))
+    quantity: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
+
+    # Page for multi-page figures
+    page_number: Mapped[int] = mapped_column(Integer, default=1)
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Relationships
+    figure: Mapped["IPCFigureModel"] = relationship(back_populates="hotspots")
+    bom_item: Mapped["BOMItemModel"] = relationship()

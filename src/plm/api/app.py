@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import require_api_key
-from .routers import parts, inventory, procurement, configurations, boms, changes, documents
+from .routers import parts, inventory, procurement, configurations, boms, changes, documents, ipc
 
 
 def create_app() -> FastAPI:
@@ -59,6 +59,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         documents.router, prefix="/api/v1/documents", tags=["Documents"], dependencies=api_deps
+    )
+    app.include_router(
+        ipc.router, prefix="/api/v1/ipc", tags=["IPC"], dependencies=api_deps
     )
 
     @app.get("/health")
