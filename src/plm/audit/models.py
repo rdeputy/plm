@@ -79,20 +79,19 @@ class AuditEntry:
 
     Immutable record of an action in the system.
     """
+    # Required fields first
     id: str
     timestamp: datetime
-
-    # Who
     user_id: str
     user_name: str
-    user_email: Optional[str] = None
-    user_ip: Optional[str] = None
-    user_agent: Optional[str] = None
-
-    # What
     action: AuditAction
     entity_type: str              # part, bom, document, eco, etc.
     entity_id: str
+
+    # Optional fields
+    user_email: Optional[str] = None
+    user_ip: Optional[str] = None
+    user_agent: Optional[str] = None
     entity_number: Optional[str] = None  # Display identifier
 
     # Changes
