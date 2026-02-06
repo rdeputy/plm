@@ -7,9 +7,10 @@ Endpoints for managing approval workflows.
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from plm.api.auth import require_user_id
 from ...workflows import (
     ApprovalDecision,
     WorkflowDefinition,
@@ -215,7 +216,7 @@ async def get_definition(definition_id: str):
 
 
 @router.post("/instances", response_model=WorkflowInstanceResponse)
-async def start_workflow(data: StartWorkflowRequest, user_id: str = Query(...)):
+async def start_workflow(data: StartWorkflowRequest, user_id: str = Depends(require_user_id)):
     """Start a new workflow instance."""
     engine = get_workflow_engine()
 
@@ -275,7 +276,7 @@ async def get_instance(instance_id: str):
 
 
 @router.post("/instances/{instance_id}/recall", response_model=WorkflowInstanceResponse)
-async def recall_workflow(instance_id: str, data: RecallRequest, user_id: str = Query(...)):
+async def recall_workflow(instance_id: str, data: RecallRequest, user_id: str = Depends(require_user_id)):
     """Recall (cancel) a workflow."""
     engine = get_workflow_engine()
 
@@ -297,7 +298,7 @@ async def recall_workflow(instance_id: str, data: RecallRequest, user_id: str = 
 
 
 @router.get("/tasks", response_model=list[WorkflowTaskResponse])
-async def list_my_tasks(user_id: str = Query(...), role: Optional[str] = None):
+async def list_my_tasks(user_id: str = Depends(require_user_id), role: Optional[str] = None):
     """List pending tasks for a user or role."""
     engine = get_workflow_engine()
 
@@ -313,7 +314,7 @@ async def process_decision(
     instance_id: str,
     task_id: str,
     data: DecisionRequest,
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
 ):
     """Process an approval decision on a task."""
     engine = get_workflow_engine()
@@ -346,7 +347,7 @@ async def delegate_task(
     instance_id: str,
     task_id: str,
     data: DelegateRequest,
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
 ):
     """Delegate a task to another user."""
     engine = get_workflow_engine()

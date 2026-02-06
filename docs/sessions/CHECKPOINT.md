@@ -21,13 +21,13 @@ bb6a874 Add detail pages and CRUD forms for all PLM entities
 - **Auth bypass** — Require explicit `PLM_ALLOW_DEV_MODE=true`
 - **IP spoofing** — Trusted proxy validation in rate limiter
 - **File size limits** — 50MB docs, 200MB CAD models
-- **user_id auth** — Use session auth instead of query params
+- **user_id auth** — All endpoints now use session auth (workflows, notifications, documents)
 
 ## Next Steps When Resuming
 1. Commit security fixes
-2. Fix remaining user_id issues in workflows/notifications
-3. Set up frontend testing (Vitest + React Testing Library)
-4. Create Kubernetes/Helm deployment manifests
+2. Set up frontend testing (Vitest + React Testing Library)
+3. Create Kubernetes/Helm deployment manifests
+4. Add CSRF protection and CSP headers
 
 ## Environment Notes
 - PostgreSQL production stack: `docker-compose -f docker-compose.prod.yml up`

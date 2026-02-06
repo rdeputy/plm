@@ -78,14 +78,12 @@ class DocumentLinkCreate(BaseModel):
 class CheckoutRequest(BaseModel):
     """Schema for checkout request."""
 
-    user_id: str
     notes: Optional[str] = None
 
 
 class CheckinRequest(BaseModel):
     """Schema for checkin request."""
 
-    user_id: str
     change_summary: Optional[str] = None
     file_hash: Optional[str] = None
     file_size: Optional[int] = None
@@ -296,6 +294,7 @@ async def delete_document(
 async def checkout_document(
     doc_id: str,
     request: CheckoutRequest,
+    user_id: str = Depends(require_user_id),
     db: Session = Depends(get_db_session),
 ):
     """Check out a document for editing."""
@@ -316,7 +315,7 @@ async def checkout_document(
         )
 
     doc.checkout_status = CheckoutStatus.CHECKED_OUT.value
-    doc.checked_out_by = request.user_id
+    doc.checked_out_by = user_id
     doc.checked_out_at = datetime.now()
     doc.checkout_notes = request.notes
 
@@ -330,6 +329,7 @@ async def checkout_document(
 async def checkin_document(
     doc_id: str,
     request: CheckinRequest,
+    user_id: str = Depends(require_user_id),
     db: Session = Depends(get_db_session),
 ):
     """Check in a document after editing."""
@@ -340,7 +340,7 @@ async def checkin_document(
     if doc.checkout_status != CheckoutStatus.CHECKED_OUT.value:
         raise HTTPException(status_code=400, detail="Document is not checked out")
 
-    if doc.checked_out_by != request.user_id:
+    if doc.checked_out_by != user_id:
         raise HTTPException(
             status_code=403,
             detail=f"Document is checked out by {doc.checked_out_by}",
@@ -360,7 +360,7 @@ async def checkin_document(
             file_hash=request.file_hash,
             file_size=request.file_size or doc.file_size or 0,
             change_summary=request.change_summary,
-            created_by=request.user_id,
+            created_by=user_id,
             created_at=datetime.now(),
         )
         db.add(version)

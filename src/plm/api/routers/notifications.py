@@ -6,9 +6,10 @@ Endpoints for managing notifications and webhooks.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from plm.api.auth import require_user_id
 from ...notifications import (
     NotificationChannel,
     NotificationPriority,
@@ -116,7 +117,7 @@ class UnreadCountResponse(BaseModel):
 
 @router.get("/", response_model=list[NotificationResponse])
 async def get_notifications(
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
     unread_only: bool = False,
     limit: int = Query(50, le=200),
     offset: int = 0,
@@ -135,7 +136,7 @@ async def get_notifications(
 
 
 @router.get("/unread-count", response_model=UnreadCountResponse)
-async def get_unread_count(user_id: str = Query(...)):
+async def get_unread_count(user_id: str = Depends(require_user_id)):
     """Get unread notification count for a user."""
     service = get_notification_service()
     count = service.get_unread_count(user_id)
@@ -154,7 +155,7 @@ async def mark_as_read(notification_id: str):
 
 
 @router.post("/mark-all-read")
-async def mark_all_as_read(user_id: str = Query(...)):
+async def mark_all_as_read(user_id: str = Depends(require_user_id)):
     """Mark all notifications as read for a user."""
     service = get_notification_service()
     count = service.mark_all_read(user_id)
@@ -207,7 +208,7 @@ async def send_notification(
 
 
 @router.get("/preferences", response_model=list[NotificationPreferenceResponse])
-async def get_preferences(user_id: str = Query(...)):
+async def get_preferences(user_id: str = Depends(require_user_id)):
     """Get notification preferences for a user."""
     service = get_notification_service()
     preferences = service.get_preferences(user_id)
@@ -227,7 +228,7 @@ async def get_preferences(user_id: str = Query(...)):
 
 
 @router.post("/preferences", response_model=NotificationPreferenceResponse)
-async def set_preference(data: NotificationPreferenceRequest, user_id: str = Query(...)):
+async def set_preference(data: NotificationPreferenceRequest, user_id: str = Depends(require_user_id)):
     """Set a notification preference."""
     service = get_notification_service()
 
