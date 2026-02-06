@@ -131,7 +131,7 @@ class VendorService:
         self,
         vendor_code: str,
         name: str,
-        tier: str = "standard",
+        tier: str = "approved",
         country: Optional[str] = None,
         website: Optional[str] = None,
         notes: str = "",

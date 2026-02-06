@@ -4,7 +4,9 @@ Base Repository Pattern
 Generic repository base class for database operations.
 """
 
-from typing import Generic, TypeVar, Optional, Type
+from __future__ import annotations
+
+from typing import Generic, TypeVar, Optional, Type, List
 from uuid import uuid4
 
 from sqlalchemy import select

@@ -4,6 +4,14 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Parts } from './pages/Parts';
 import { Projects } from './pages/Projects';
+import { Boms } from './pages/Boms';
+import { Documents } from './pages/Documents';
+import { Changes } from './pages/Changes';
+import { Requirements } from './pages/Requirements';
+import { Suppliers } from './pages/Suppliers';
+import { Compliance } from './pages/Compliance';
+import { Costing } from './pages/Costing';
+import { Bulletins } from './pages/Bulletins';
 import { Placeholder } from './pages/Placeholder';
 
 const queryClient = new QueryClient({
@@ -25,19 +33,21 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="parts" element={<Parts />} />
             <Route path="parts/:id" element={<Placeholder />} />
-            <Route path="boms" element={<Placeholder />} />
+            <Route path="boms" element={<Boms />} />
             <Route path="boms/:id" element={<Placeholder />} />
-            <Route path="documents" element={<Placeholder />} />
+            <Route path="documents" element={<Documents />} />
             <Route path="documents/:id" element={<Placeholder />} />
-            <Route path="changes" element={<Placeholder />} />
+            <Route path="changes" element={<Changes />} />
             <Route path="changes/:id" element={<Placeholder />} />
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<Placeholder />} />
-            <Route path="requirements" element={<Placeholder />} />
-            <Route path="suppliers" element={<Placeholder />} />
-            <Route path="compliance" element={<Placeholder />} />
-            <Route path="costing" element={<Placeholder />} />
-            <Route path="bulletins" element={<Placeholder />} />
+            <Route path="requirements" element={<Requirements />} />
+            <Route path="requirements/:id" element={<Placeholder />} />
+            <Route path="suppliers" element={<Suppliers />} />
+            <Route path="compliance" element={<Compliance />} />
+            <Route path="costing" element={<Costing />} />
+            <Route path="bulletins" element={<Bulletins />} />
+            <Route path="bulletins/:id" element={<Placeholder />} />
           </Route>
         </Routes>
       </BrowserRouter>

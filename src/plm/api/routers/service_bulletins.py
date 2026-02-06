@@ -151,6 +151,148 @@ class UnitConfigurationResponse(BaseModel):
         from_attributes = True
 
 
+# ----- Maintenance Schedule Endpoints -----
+# NOTE: These must be defined BEFORE /{sb_id} routes to avoid path conflicts
+
+
+@router.get("/maintenance/schedules", response_model=list[MaintenanceScheduleResponse])
+async def list_maintenance_schedules(
+    part_number: Optional[str] = Query(None),
+    system: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    limit: int = Query(100, le=500),
+    db: Session = Depends(get_db_session),
+):
+    """List maintenance schedules."""
+    query = db.query(MaintenanceScheduleModel)
+
+    if part_number:
+        query = query.filter(MaintenanceScheduleModel.part_number == part_number)
+    if system:
+        query = query.filter(MaintenanceScheduleModel.system == system)
+    if is_active is not None:
+        query = query.filter(MaintenanceScheduleModel.is_active == is_active)
+
+    return query.limit(limit).all()
+
+
+@router.post("/maintenance/schedules", response_model=MaintenanceScheduleResponse, status_code=201)
+async def create_maintenance_schedule(
+    schedule: MaintenanceScheduleCreate,
+    db: Session = Depends(get_db_session),
+):
+    """Create a maintenance schedule."""
+    model = MaintenanceScheduleModel(
+        id=str(uuid4()),
+        schedule_code=schedule.schedule_code,
+        part_id=schedule.part_id,
+        part_number=schedule.part_number,
+        system=schedule.system,
+        interval_type=schedule.interval_type,
+        interval_value=schedule.interval_value,
+        interval_unit=schedule.interval_unit,
+        task_description=schedule.task_description,
+        is_active=True,
+        created_at=datetime.now(),
+    )
+    db.add(model)
+    db.commit()
+    db.refresh(model)
+    return model
+
+
+# ----- Unit Configuration Endpoints -----
+# NOTE: These must be defined BEFORE /{sb_id} routes to avoid path conflicts
+
+
+@router.get("/units", response_model=list[UnitConfigurationResponse])
+async def list_unit_configurations(
+    part_number: Optional[str] = Query(None),
+    owner_name: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db_session),
+):
+    """List unit configurations."""
+    query = db.query(UnitConfigurationModel)
+
+    if part_number:
+        query = query.filter(UnitConfigurationModel.part_number == part_number)
+    if owner_name:
+        query = query.filter(UnitConfigurationModel.owner_name.ilike(f"%{owner_name}%"))
+    if search:
+        term = f"%{search}%"
+        query = query.filter(UnitConfigurationModel.serial_number.ilike(term))
+
+    return query.offset(offset).limit(limit).all()
+
+
+@router.post("/units", response_model=UnitConfigurationResponse, status_code=201)
+async def create_unit_configuration(
+    unit: UnitConfigurationCreate,
+    db: Session = Depends(get_db_session),
+):
+    """Create a unit configuration."""
+    existing = db.query(UnitConfigurationModel).filter(
+        UnitConfigurationModel.serial_number == unit.serial_number
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Serial number already exists")
+
+    model = UnitConfigurationModel(
+        id=str(uuid4()),
+        serial_number=unit.serial_number,
+        part_id=unit.part_id,
+        part_number=unit.part_number,
+        current_revision=unit.current_revision,
+        build_date=date.fromisoformat(unit.build_date) if unit.build_date else None,
+        owner_name=unit.owner_name,
+        location=unit.location,
+        total_hours=0.0,
+        total_cycles=0,
+        created_at=datetime.now(),
+    )
+    db.add(model)
+    db.commit()
+    db.refresh(model)
+    return model
+
+
+@router.get("/units/{serial_number}", response_model=UnitConfigurationResponse)
+async def get_unit_configuration(serial_number: str, db: Session = Depends(get_db_session)):
+    """Get a unit configuration by serial number."""
+    unit = db.query(UnitConfigurationModel).filter(
+        UnitConfigurationModel.serial_number == serial_number
+    ).first()
+    if not unit:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    return unit
+
+
+@router.patch("/units/{serial_number}", response_model=UnitConfigurationResponse)
+async def update_unit_configuration(
+    serial_number: str,
+    updates: UnitConfigurationUpdate,
+    db: Session = Depends(get_db_session),
+):
+    """Update a unit configuration."""
+    unit = db.query(UnitConfigurationModel).filter(
+        UnitConfigurationModel.serial_number == serial_number
+    ).first()
+    if not unit:
+        raise HTTPException(status_code=404, detail="Unit not found")
+
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(unit, field, value)
+
+    unit.last_updated = datetime.now()
+    db.commit()
+    db.refresh(unit)
+    return unit
+
+
 # ----- Service Bulletin Endpoints -----
 
 
@@ -326,143 +468,3 @@ async def update_compliance_record(
     db.commit()
     db.refresh(comp)
     return comp
-
-
-# ----- Maintenance Schedule Endpoints -----
-
-
-@router.get("/maintenance/schedules", response_model=list[MaintenanceScheduleResponse])
-async def list_maintenance_schedules(
-    part_number: Optional[str] = Query(None),
-    system: Optional[str] = Query(None),
-    is_active: Optional[bool] = Query(None),
-    limit: int = Query(100, le=500),
-    db: Session = Depends(get_db_session),
-):
-    """List maintenance schedules."""
-    query = db.query(MaintenanceScheduleModel)
-
-    if part_number:
-        query = query.filter(MaintenanceScheduleModel.part_number == part_number)
-    if system:
-        query = query.filter(MaintenanceScheduleModel.system == system)
-    if is_active is not None:
-        query = query.filter(MaintenanceScheduleModel.is_active == is_active)
-
-    return query.limit(limit).all()
-
-
-@router.post("/maintenance/schedules", response_model=MaintenanceScheduleResponse, status_code=201)
-async def create_maintenance_schedule(
-    schedule: MaintenanceScheduleCreate,
-    db: Session = Depends(get_db_session),
-):
-    """Create a maintenance schedule."""
-    model = MaintenanceScheduleModel(
-        id=str(uuid4()),
-        schedule_code=schedule.schedule_code,
-        part_id=schedule.part_id,
-        part_number=schedule.part_number,
-        system=schedule.system,
-        interval_type=schedule.interval_type,
-        interval_value=schedule.interval_value,
-        interval_unit=schedule.interval_unit,
-        task_description=schedule.task_description,
-        is_active=True,
-        created_at=datetime.now(),
-    )
-    db.add(model)
-    db.commit()
-    db.refresh(model)
-    return model
-
-
-# ----- Unit Configuration Endpoints -----
-
-
-@router.get("/units", response_model=list[UnitConfigurationResponse])
-async def list_unit_configurations(
-    part_number: Optional[str] = Query(None),
-    owner_name: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    limit: int = Query(100, le=500),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_session),
-):
-    """List unit configurations."""
-    query = db.query(UnitConfigurationModel)
-
-    if part_number:
-        query = query.filter(UnitConfigurationModel.part_number == part_number)
-    if owner_name:
-        query = query.filter(UnitConfigurationModel.owner_name.ilike(f"%{owner_name}%"))
-    if search:
-        term = f"%{search}%"
-        query = query.filter(UnitConfigurationModel.serial_number.ilike(term))
-
-    return query.offset(offset).limit(limit).all()
-
-
-@router.post("/units", response_model=UnitConfigurationResponse, status_code=201)
-async def create_unit_configuration(
-    unit: UnitConfigurationCreate,
-    db: Session = Depends(get_db_session),
-):
-    """Create a unit configuration."""
-    existing = db.query(UnitConfigurationModel).filter(
-        UnitConfigurationModel.serial_number == unit.serial_number
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Serial number already exists")
-
-    model = UnitConfigurationModel(
-        id=str(uuid4()),
-        serial_number=unit.serial_number,
-        part_id=unit.part_id,
-        part_number=unit.part_number,
-        current_revision=unit.current_revision,
-        build_date=date.fromisoformat(unit.build_date) if unit.build_date else None,
-        owner_name=unit.owner_name,
-        location=unit.location,
-        total_hours=0.0,
-        total_cycles=0,
-        created_at=datetime.now(),
-    )
-    db.add(model)
-    db.commit()
-    db.refresh(model)
-    return model
-
-
-@router.get("/units/{serial_number}", response_model=UnitConfigurationResponse)
-async def get_unit_configuration(serial_number: str, db: Session = Depends(get_db_session)):
-    """Get a unit configuration by serial number."""
-    unit = db.query(UnitConfigurationModel).filter(
-        UnitConfigurationModel.serial_number == serial_number
-    ).first()
-    if not unit:
-        raise HTTPException(status_code=404, detail="Unit not found")
-    return unit
-
-
-@router.patch("/units/{serial_number}", response_model=UnitConfigurationResponse)
-async def update_unit_configuration(
-    serial_number: str,
-    updates: UnitConfigurationUpdate,
-    db: Session = Depends(get_db_session),
-):
-    """Update a unit configuration."""
-    unit = db.query(UnitConfigurationModel).filter(
-        UnitConfigurationModel.serial_number == serial_number
-    ).first()
-    if not unit:
-        raise HTTPException(status_code=404, detail="Unit not found")
-
-    for field, value in updates.model_dump(exclude_unset=True).items():
-        if value is not None:
-            setattr(unit, field, value)
-
-    unit.last_updated = datetime.now()
-    db.commit()
-    db.refresh(unit)
-    return unit

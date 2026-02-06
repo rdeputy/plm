@@ -81,6 +81,7 @@ class ComplianceService:
         self,
         part_id: str,
         substance_name: str,
+        part_number: str = "",
         cas_number: Optional[str] = None,
         concentration_ppm: Optional[float] = None,
         threshold_ppm: Optional[float] = None,
@@ -93,12 +94,13 @@ class ComplianceService:
 
         return self.substances.create(
             part_id=part_id,
+            part_number=part_number,
             substance_name=substance_name,
             cas_number=cas_number,
             concentration_ppm=concentration_ppm,
             threshold_ppm=threshold_ppm,
             above_threshold=above_threshold,
-            location_in_part=location_in_part,
+            component=location_in_part,
         )
 
     def get_part_substances(self, part_id: str) -> list[SubstanceDeclarationModel]:

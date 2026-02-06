@@ -241,7 +241,6 @@ class TestServiceBulletinsRouter:
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
-    @pytest.mark.skip(reason="Route conflict: /units matched as /{sb_id} - needs router fix")
     def test_list_units(self, client, api_headers):
         """Test listing unit configurations."""
         response = client.get("/api/v1/bulletins/units", headers=api_headers)

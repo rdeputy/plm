@@ -62,13 +62,13 @@ class CostingService:
     def create_part_cost(
         self,
         part_id: str,
-        cost_type: str = "standard",
+        part_number: str = "",
         currency: str = "USD",
     ) -> PartCostModel:
         """Create cost record for a part."""
         return self.costs.create(
             part_id=part_id,
-            cost_type=cost_type,
+            part_number=part_number,
             currency=currency,
             material_cost=Decimal("0"),
             labor_cost=Decimal("0"),
@@ -91,16 +91,23 @@ class CostingService:
         uom: str = "EA",
     ) -> CostElementModel:
         """Add a cost element to a part cost."""
+        from plm.costing.models import CostType as CostTypeEnum
         extended_cost = quantity * unit_cost
+
+        # Convert string to enum if needed
+        if isinstance(cost_type, str):
+            cost_type_enum = CostTypeEnum(cost_type)
+        else:
+            cost_type_enum = cost_type
 
         element = self.elements.create(
             part_cost_id=part_cost_id,
-            cost_type=cost_type,
+            cost_type=cost_type_enum,
             description=description,
             quantity=quantity,
             unit_cost=unit_cost,
             extended_cost=extended_cost,
-            uom=uom,
+            unit_of_measure=uom,
         )
 
         self.costs.recalculate_totals(part_cost_id)
@@ -149,24 +156,26 @@ class CostingService:
     def record_variance(
         self,
         part_id: str,
+        part_number: str,
         period: str,
         standard_cost: Decimal,
         actual_cost: Decimal,
-        quantity: int = 1,
+        quantity: Decimal = Decimal("1"),
     ) -> CostVarianceModel:
         """Record cost variance."""
         variance = actual_cost - standard_cost
-        total_variance = variance * quantity
+        variance_percent = float(variance / standard_cost * 100) if standard_cost else 0
         favorable = variance <= 0
 
         return self.variances.create(
             part_id=part_id,
+            part_number=part_number,
             period=period,
             standard_cost=standard_cost,
             actual_cost=actual_cost,
             quantity=quantity,
-            unit_variance=variance,
-            total_variance=total_variance,
+            variance=variance,
+            variance_percent=variance_percent,
             favorable=favorable,
         )
 
