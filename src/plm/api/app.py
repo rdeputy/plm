@@ -10,6 +10,8 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import require_api_key
+from .logging_config import RequestLoggingMiddleware, logger
+from .rate_limit import RateLimitMiddleware
 from .routers import (
     parts,
     configurations,
@@ -54,6 +56,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Rate limiting middleware
+    app.add_middleware(RateLimitMiddleware)
+
+    # Request logging middleware
+    app.add_middleware(RequestLoggingMiddleware)
+
+    logger.info("PLM API starting", extra={"extra_data": {"version": "0.1.0"}})
 
     # Include routers — all /api/v1/* routes require API key
     api_deps = [Depends(require_api_key)]

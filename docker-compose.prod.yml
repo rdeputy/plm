@@ -1,0 +1,126 @@
+version: "3.8"
+
+# Production docker-compose with PostgreSQL
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  plm:
+    build:
+      context: .
+      target: production
+    container_name: plm
+    ports:
+      - "8001:8001"
+    depends_on:
+      plm-db:
+        condition: service_healthy
+      plm-redis:
+        condition: service_healthy
+    volumes:
+      - plm-uploads:/app/uploads
+    environment:
+      - PLM_DATABASE_URL=postgresql://${POSTGRES_USER:-plm}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@plm-db:5432/${POSTGRES_DB:-plm}
+      - REDIS_URL=redis://plm-redis:6379/0
+      - PLM_API_KEY=${PLM_API_KEY:?Set PLM_API_KEY}
+      - PLM_CORS_ORIGINS=${PLM_CORS_ORIGINS:-http://localhost:3000}
+      - PLM_LOG_LEVEL=${PLM_LOG_LEVEL:-INFO}
+      - PLM_LOG_FORMAT=json
+      - PLM_RATE_LIMIT_ENABLED=true
+      - PLM_RATE_LIMIT_RPM=60
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - plm-network
+
+  plm-db:
+    image: postgres:16-alpine
+    container_name: plm-db
+    volumes:
+      - plm-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-plm}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-plm}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plm} -d ${POSTGRES_DB:-plm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - plm-network
+
+  plm-redis:
+    image: redis:7-alpine
+    container_name: plm-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - plm-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - plm-network
+
+  plm-worker:
+    build:
+      context: .
+      target: production
+    container_name: plm-worker
+    depends_on:
+      plm-db:
+        condition: service_healthy
+      plm-redis:
+        condition: service_healthy
+    environment:
+      - PLM_DATABASE_URL=postgresql://${POSTGRES_USER:-plm}:${POSTGRES_PASSWORD}@plm-db:5432/${POSTGRES_DB:-plm}
+      - REDIS_URL=redis://plm-redis:6379/0
+      - PLM_LOG_LEVEL=${PLM_LOG_LEVEL:-INFO}
+      - PLM_LOG_FORMAT=json
+    command: ["celery", "-A", "src.plm.tasks", "worker", "--loglevel=info"]
+    restart: unless-stopped
+    networks:
+      - plm-network
+
+  # Optional: PgAdmin for database management
+  plm-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: plm-pgadmin
+    profiles: ["tools"]  # Only start with: docker-compose --profile tools up
+    ports:
+      - "5050:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@plm.local}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+    volumes:
+      - plm-pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - plm-db
+    restart: unless-stopped
+    networks:
+      - plm-network
+
+volumes:
+  plm-postgres-data:
+    driver: local
+  plm-redis-data:
+    driver: local
+  plm-uploads:
+    driver: local
+  plm-pgadmin-data:
+    driver: local
+
+networks:
+  plm-network:
+    driver: bridge
