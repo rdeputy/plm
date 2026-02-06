@@ -12,7 +12,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from plm.api.auth import require_user_id
 from plm.api.deps import get_db_session
+from plm.api.security_utils import sanitize_filename, validate_file_size
 from plm.db.models import (
     DocumentModel,
     DocumentVersionModel,
@@ -383,7 +385,7 @@ async def checkin_document(
 @router.post("/{doc_id}/cancel-checkout", response_model=DocumentResponse)
 async def cancel_checkout(
     doc_id: str,
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
     force: bool = Query(False, description="Force cancel (admin only)"),
     db: Session = Depends(get_db_session),
 ):
@@ -696,7 +698,7 @@ async def get_document_version(
 async def upload_file(
     doc_id: str,
     file: UploadFile = File(...),
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
     db: Session = Depends(get_db_session),
 ):
     """
@@ -722,15 +724,22 @@ async def upload_file(
                 detail=f"Document is checked out by {doc.checked_out_by}",
             )
 
-    # Read file content
+    # Sanitize filename to prevent path traversal
+    raw_filename = file.filename or "document"
+    filename = sanitize_filename(raw_filename)
+
+    # Read file content and validate size
     content = await file.read()
+    is_valid, error_msg = validate_file_size(len(content), "document")
+    if not is_valid:
+        raise HTTPException(status_code=413, detail=error_msg)
 
     # Upload to DMS
     service = get_document_service()
     result = service.upload(
         document_id=doc_id,
         content=content,
-        filename=file.filename or "document",
+        filename=filename,
         user_id=user_id,
         document_type=doc.document_type.value if hasattr(doc.document_type, 'value') else doc.document_type,
         revision=doc.revision,
@@ -742,7 +751,7 @@ async def upload_file(
 
     # Update document metadata
     doc.storage_path = result.storage_path
-    doc.file_name = file.filename
+    doc.file_name = filename
     doc.file_size = result.file_size
     doc.file_hash = result.file_hash
     doc.mime_type = result.mime_type

@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
+from plm.api.auth import require_user_id
 from plm.api.deps import get_db_session
+from plm.api.security_utils import sanitize_filename, validate_file_size
 from plm.db.models import PartModel, PartRevisionModel
 from plm.parts.models import PartType, PartStatus
 from plm.documents.dms_integration import get_document_service
@@ -321,7 +323,7 @@ async def upload_cad_file(
     part_id: str,
     file_type: Literal["model", "drawing", "spec"] = Query(..., description="Type of CAD file"),
     file: UploadFile = File(...),
-    user_id: str = Query(...),
+    user_id: str = Depends(require_user_id),
     db: Session = Depends(get_db_session),
 ):
     """
@@ -344,9 +346,10 @@ async def upload_cad_file(
             detail="Cannot upload to released part - create new revision first",
         )
 
-    # Validate file extension
+    # Sanitize filename to prevent path traversal
     import os
-    filename = file.filename or "file"
+    raw_filename = file.filename or "file"
+    filename = sanitize_filename(raw_filename)
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in CAD_EXTENSIONS.get(file_type, set()):
@@ -356,8 +359,12 @@ async def upload_cad_file(
             detail=f"Invalid file extension '{ext}' for {file_type}. Allowed: {allowed}",
         )
 
-    # Read file content
+    # Read file content and validate size
     content = await file.read()
+    size_category = "cad_model" if file_type == "model" else "cad_drawing"
+    is_valid, error_msg = validate_file_size(len(content), size_category)
+    if not is_valid:
+        raise HTTPException(status_code=413, detail=error_msg)
 
     # Upload to DMS
     service = get_document_service()
