@@ -1,4 +1,40 @@
 """API Routers."""
-from . import parts, configurations, boms, changes, documents, ipc, workflows, audit, notifications, reports, integrations
+from . import (
+    parts,
+    configurations,
+    boms,
+    changes,
+    documents,
+    ipc,
+    workflows,
+    audit,
+    notifications,
+    reports,
+    integrations,
+    requirements,
+    suppliers,
+    compliance,
+    costing,
+    service_bulletins,
+    projects,
+)
 
-__all__ = ["parts", "configurations", "boms", "changes", "documents", "ipc", "workflows", "audit", "notifications", "reports", "integrations"]
+__all__ = [
+    "parts",
+    "configurations",
+    "boms",
+    "changes",
+    "documents",
+    "ipc",
+    "workflows",
+    "audit",
+    "notifications",
+    "reports",
+    "integrations",
+    "requirements",
+    "suppliers",
+    "compliance",
+    "costing",
+    "service_bulletins",
+    "projects",
+]
