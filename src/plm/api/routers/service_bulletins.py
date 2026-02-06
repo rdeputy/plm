@@ -9,7 +9,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -47,6 +47,8 @@ class ServiceBulletinUpdate(BaseModel):
 
 
 class ServiceBulletinResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     bulletin_number: str
     bulletin_type: str
@@ -56,9 +58,6 @@ class ServiceBulletinResponse(BaseModel):
     safety_issue: bool
     compliance_deadline: Optional[str]
     effective_date: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class BulletinComplianceCreate(BaseModel):
@@ -80,6 +79,8 @@ class BulletinComplianceUpdate(BaseModel):
 
 
 class BulletinComplianceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     bulletin_id: str
     bulletin_number: str
@@ -87,9 +88,6 @@ class BulletinComplianceResponse(BaseModel):
     status: str
     completed_date: Optional[str]
     waived: bool
-
-    class Config:
-        from_attributes = True
 
 
 class MaintenanceScheduleCreate(BaseModel):
@@ -104,6 +102,8 @@ class MaintenanceScheduleCreate(BaseModel):
 
 
 class MaintenanceScheduleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     schedule_code: str
     part_number: Optional[str]
@@ -113,9 +113,6 @@ class MaintenanceScheduleResponse(BaseModel):
     interval_unit: str
     task_description: Optional[str]
     is_active: bool
-
-    class Config:
-        from_attributes = True
 
 
 class UnitConfigurationCreate(BaseModel):
@@ -137,6 +134,8 @@ class UnitConfigurationUpdate(BaseModel):
 
 
 class UnitConfigurationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     serial_number: str
     part_id: str
@@ -146,9 +145,6 @@ class UnitConfigurationResponse(BaseModel):
     total_cycles: int
     owner_name: Optional[str]
     location: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Maintenance Schedule Endpoints -----

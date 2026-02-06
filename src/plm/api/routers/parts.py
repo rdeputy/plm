@@ -4,15 +4,16 @@ Parts API Router
 CRUD operations for parts and revisions.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
 from plm.db.models import PartModel, PartRevisionModel
 from plm.parts.models import PartType, PartStatus
+from plm.documents.dms_integration import get_document_service
 
 router = APIRouter()
 
@@ -55,6 +56,8 @@ class PartUpdate(BaseModel):
 class PartResponse(BaseModel):
     """Schema for part response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_number: str
     revision: str
@@ -70,9 +73,6 @@ class PartResponse(BaseModel):
     manufacturer: Optional[str]
     manufacturer_pn: Optional[str]
     lead_time_days: Optional[int]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Endpoints -----
@@ -292,3 +292,121 @@ def _part_to_response(model: PartModel) -> PartResponse:
         manufacturer_pn=model.manufacturer_pn,
         lead_time_days=model.lead_time_days,
     )
+
+
+# ----- CAD File Upload -----
+
+
+class CadUploadResponse(BaseModel):
+    """Response for CAD file upload."""
+
+    part_id: str
+    file_type: str
+    file_path: str
+    file_name: str
+    file_size: int
+    mime_type: str
+
+
+# Allowed CAD file extensions and MIME types
+CAD_EXTENSIONS = {
+    "model": {".3dm", ".skp", ".rvt", ".ifc", ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs"},
+    "drawing": {".pdf", ".dwg", ".dxf"},
+    "spec": {".pdf", ".doc", ".docx", ".txt"},
+}
+
+
+@router.post("/{part_id}/upload-cad", response_model=CadUploadResponse)
+async def upload_cad_file(
+    part_id: str,
+    file_type: Literal["model", "drawing", "spec"] = Query(..., description="Type of CAD file"),
+    file: UploadFile = File(...),
+    user_id: str = Query(...),
+    db: Session = Depends(get_db_session),
+):
+    """
+    Upload a CAD file for a part.
+
+    Supports:
+    - model: 3D model files (.3dm, .skp, .rvt, .ifc, .dwg, .dxf, .step, .iges)
+    - drawing: 2D drawing files (.pdf, .dwg, .dxf)
+    - spec: Specification documents (.pdf, .doc, .docx)
+
+    Updates the part's model_file, drawing_file, or spec_file field accordingly.
+    """
+    part = db.query(PartModel).filter(PartModel.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    if part.status == PartStatus.RELEASED.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot upload to released part - create new revision first",
+        )
+
+    # Validate file extension
+    import os
+    filename = file.filename or "file"
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in CAD_EXTENSIONS.get(file_type, set()):
+        allowed = ", ".join(sorted(CAD_EXTENSIONS.get(file_type, set())))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file extension '{ext}' for {file_type}. Allowed: {allowed}",
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Upload to DMS
+    service = get_document_service()
+    result = service.upload(
+        document_id=f"{part_id}-{file_type}",
+        content=content,
+        filename=filename,
+        user_id=user_id,
+        document_type=f"part_{file_type}",
+        revision=part.revision,
+    )
+
+    if not result.success:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {result.error}")
+
+    # Update part with file path
+    if file_type == "model":
+        part.model_file = result.storage_path
+    elif file_type == "drawing":
+        part.drawing_file = result.storage_path
+    else:
+        part.spec_file = result.storage_path
+
+    db.commit()
+    db.refresh(part)
+
+    return CadUploadResponse(
+        part_id=part_id,
+        file_type=file_type,
+        file_path=result.storage_path,
+        file_name=filename,
+        file_size=result.file_size,
+        mime_type=result.mime_type,
+    )
+
+
+@router.get("/{part_id}/cad-files")
+async def get_cad_files(
+    part_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Get CAD file paths for a part."""
+    part = db.query(PartModel).filter(PartModel.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    return {
+        "part_id": part_id,
+        "model_file": part.model_file,
+        "drawing_file": part.drawing_file,
+        "spec_file": part.spec_file,
+    }

@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -83,6 +83,8 @@ class BOMItemResponse(BaseModel):
 class BOMResponse(BaseModel):
     """Schema for BOM response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     bom_number: str
     revision: str
@@ -98,9 +100,6 @@ class BOMResponse(BaseModel):
     effective_from: Optional[date]
     effective_to: Optional[date]
     project_id: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class ExplodedItemResponse(BaseModel):

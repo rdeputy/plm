@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -37,15 +37,14 @@ class RegulationCreate(BaseModel):
 
 
 class RegulationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     regulation_code: str
     name: str
     regulation_type: str
     authority: Optional[str]
     is_active: bool
-
-    class Config:
-        from_attributes = True
 
 
 class SubstanceDeclarationCreate(BaseModel):
@@ -59,6 +58,8 @@ class SubstanceDeclarationCreate(BaseModel):
 
 
 class SubstanceDeclarationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -67,9 +68,6 @@ class SubstanceDeclarationResponse(BaseModel):
     category: str
     concentration_ppm: Optional[float]
     above_threshold: bool
-
-    class Config:
-        from_attributes = True
 
 
 class ComplianceDeclarationCreate(BaseModel):
@@ -89,6 +87,8 @@ class ComplianceDeclarationUpdate(BaseModel):
 
 
 class ComplianceDeclarationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -96,9 +96,6 @@ class ComplianceDeclarationResponse(BaseModel):
     regulation_code: str
     status: str
     exemption_code: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class CertificateCreate(BaseModel):
@@ -111,6 +108,8 @@ class CertificateCreate(BaseModel):
 
 
 class CertificateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     certificate_number: str
     regulation_id: str
@@ -119,9 +118,6 @@ class CertificateResponse(BaseModel):
     issued_by: Optional[str]
     issue_date: Optional[str]
     expiry_date: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class ConflictMineralCreate(BaseModel):
@@ -135,6 +131,8 @@ class ConflictMineralCreate(BaseModel):
 
 
 class ConflictMineralResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -143,9 +141,6 @@ class ConflictMineralResponse(BaseModel):
     contains_tungsten: bool
     contains_gold: bool
     conflict_free: Optional[bool]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Regulation Endpoints -----

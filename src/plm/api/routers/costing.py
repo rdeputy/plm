@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -37,6 +37,8 @@ class CostElementCreate(BaseModel):
 
 
 class CostElementResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     cost_type: str
     description: Optional[str]
@@ -44,9 +46,6 @@ class CostElementResponse(BaseModel):
     quantity: float
     extended_cost: float
     source: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class PartCostCreate(BaseModel):
@@ -65,6 +64,8 @@ class PartCostUpdate(BaseModel):
 
 
 class PartCostResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -79,9 +80,6 @@ class PartCostResponse(BaseModel):
     currency: str
     lot_size: int
 
-    class Config:
-        from_attributes = True
-
 
 class CostVarianceCreate(BaseModel):
     part_id: str
@@ -94,6 +92,8 @@ class CostVarianceCreate(BaseModel):
 
 
 class CostVarianceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -104,9 +104,6 @@ class CostVarianceResponse(BaseModel):
     variance_percent: float
     variance_type: str
     favorable: bool
-
-    class Config:
-        from_attributes = True
 
 
 class ShouldCostCreate(BaseModel):
@@ -123,6 +120,8 @@ class ShouldCostCreate(BaseModel):
 
 
 class ShouldCostResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -132,9 +131,6 @@ class ShouldCostResponse(BaseModel):
     current_price: Optional[float]
     savings_opportunity: Optional[float]
     savings_percent: Optional[float]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Part Cost Endpoints -----

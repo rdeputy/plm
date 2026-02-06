@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -45,6 +45,8 @@ class RequirementUpdate(BaseModel):
 
 
 class RequirementResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     requirement_number: str
     requirement_type: str
@@ -57,9 +59,6 @@ class RequirementResponse(BaseModel):
     parent_id: Optional[str]
     project_id: Optional[str]
 
-    class Config:
-        from_attributes = True
-
 
 class RequirementLinkCreate(BaseModel):
     requirement_id: str
@@ -71,6 +70,8 @@ class RequirementLinkCreate(BaseModel):
 
 
 class RequirementLinkResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     requirement_id: str
     link_type: str
@@ -78,9 +79,6 @@ class RequirementLinkResponse(BaseModel):
     target_number: Optional[str]
     relationship: str
     coverage: str
-
-    class Config:
-        from_attributes = True
 
 
 class VerificationCreate(BaseModel):
@@ -99,6 +97,8 @@ class VerificationUpdate(BaseModel):
 
 
 class VerificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     verification_number: str
     requirement_id: str
@@ -107,9 +107,6 @@ class VerificationResponse(BaseModel):
     status: str
     pass_fail: Optional[bool]
     verified_by: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Requirement Endpoints -----

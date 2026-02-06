@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { partsApi } from '../lib/api';
 import { DetailPageHeader, DetailSection, InfoGrid, InfoItem } from '../components/ui';
 import { StatusBadge } from '../components/forms';
+import { CadFileUpload } from '../components/CadFileUpload';
 import { Edit, CheckCircle, RefreshCw } from 'lucide-react';
 
 interface Part {
@@ -21,6 +22,9 @@ interface Part {
   manufacturer: string | null;
   manufacturer_pn: string | null;
   lead_time_days: number | null;
+  model_file: string | null;
+  drawing_file: string | null;
+  spec_file: string | null;
 }
 
 export function PartDetail() {
@@ -154,6 +158,16 @@ export function PartDetail() {
           />
         </InfoGrid>
       </DetailSection>
+
+      <CadFileUpload
+        partId={part.id}
+        currentFiles={{
+          model_file: part.model_file,
+          drawing_file: part.drawing_file,
+          spec_file: part.spec_file,
+        }}
+        disabled={!canEdit}
+      />
     </div>
   );
 }

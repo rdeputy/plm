@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -48,6 +48,8 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_number: str
     name: str
@@ -61,9 +63,6 @@ class ProjectResponse(BaseModel):
     budget: float
     actual_cost: float
     currency: str
-
-    class Config:
-        from_attributes = True
 
 
 class MilestoneCreate(BaseModel):
@@ -87,6 +86,8 @@ class MilestoneUpdate(BaseModel):
 
 
 class MilestoneResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_id: str
     milestone_number: str
@@ -97,9 +98,6 @@ class MilestoneResponse(BaseModel):
     actual_date: Optional[str]
     review_required: bool
     sequence: int
-
-    class Config:
-        from_attributes = True
 
 
 class DeliverableCreate(BaseModel):
@@ -122,6 +120,8 @@ class DeliverableUpdate(BaseModel):
 
 
 class DeliverableResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_id: str
     milestone_id: Optional[str]
@@ -132,9 +132,6 @@ class DeliverableResponse(BaseModel):
     percent_complete: int
     due_date: Optional[str]
     assigned_name: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Project Endpoints -----

@@ -10,7 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from plm.api.deps import get_db_session
@@ -46,6 +46,8 @@ class ManufacturerUpdate(BaseModel):
 
 
 class ManufacturerResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     manufacturer_code: str
     name: str
@@ -53,9 +55,6 @@ class ManufacturerResponse(BaseModel):
     country: Optional[str]
     cage_code: Optional[str]
     audit_score: Optional[int]
-
-    class Config:
-        from_attributes = True
 
 
 class VendorCreate(BaseModel):
@@ -77,6 +76,8 @@ class VendorUpdate(BaseModel):
 
 
 class VendorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     vendor_code: str
     name: str
@@ -85,9 +86,6 @@ class VendorResponse(BaseModel):
     country: Optional[str]
     on_time_delivery_rate: Optional[float]
     quality_rating: Optional[float]
-
-    class Config:
-        from_attributes = True
 
 
 class ApprovedManufacturerCreate(BaseModel):
@@ -101,6 +99,8 @@ class ApprovedManufacturerCreate(BaseModel):
 
 
 class ApprovedManufacturerResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -111,9 +111,6 @@ class ApprovedManufacturerResponse(BaseModel):
     qualification_status: str
     preference_rank: int
     is_primary: bool
-
-    class Config:
-        from_attributes = True
 
 
 class ApprovedVendorCreate(BaseModel):
@@ -130,6 +127,8 @@ class ApprovedVendorCreate(BaseModel):
 
 
 class ApprovedVendorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     part_id: str
     part_number: str
@@ -141,9 +140,6 @@ class ApprovedVendorResponse(BaseModel):
     currency: str
     lead_time_days: int
     preference_rank: int
-
-    class Config:
-        from_attributes = True
 
 
 # ----- Manufacturer Endpoints -----
