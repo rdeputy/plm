@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import require_api_key
 from .logging_config import RequestLoggingMiddleware, logger
+from .metrics import MetricsMiddleware, get_metrics, get_metrics_content_type
 from .rate_limit import RateLimitMiddleware
+from .security_headers import SecurityHeadersMiddleware
 from .routers import (
     parts,
     configurations,
@@ -37,10 +39,57 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="PLM API",
-        description="Product Lifecycle Management for Construction",
+        description="""
+## Product Lifecycle Management API
+
+A comprehensive API for managing product lifecycles across industries including:
+- **DevOps** — Software and infrastructure components
+- **PD&E** — Product development and engineering
+- **AEC** — Architecture, engineering, and construction
+- **Manufacturing** — Parts, BOMs, and change management
+
+### Authentication
+
+All `/api/v1/*` endpoints require authentication via:
+- **API Key**: `X-API-Key` header
+- **JWT Token**: `Authorization: Bearer <token>` header (Supabase)
+
+### Rate Limiting
+
+Default: 60 requests/minute per client IP. Configurable via `PLM_RATE_LIMIT_RPM`.
+
+### Monitoring
+
+- `/health` — Health check endpoint
+- `/metrics` — Prometheus metrics endpoint
+        """,
         version="0.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
+        openapi_tags=[
+            {"name": "Parts", "description": "Part master data and revisions"},
+            {"name": "BOMs", "description": "Bill of Materials management"},
+            {"name": "Documents", "description": "Document control with versioning and checkout"},
+            {"name": "Changes", "description": "Engineering Change Orders (ECO/ECN)"},
+            {"name": "Projects", "description": "Project management and tracking"},
+            {"name": "Requirements", "description": "Requirements traceability"},
+            {"name": "Workflows", "description": "Approval workflows and tasks"},
+            {"name": "Compliance", "description": "Regulatory compliance tracking"},
+            {"name": "Suppliers", "description": "Supplier and vendor management"},
+            {"name": "Costing", "description": "Cost estimation and tracking"},
+            {"name": "Notifications", "description": "User notifications and preferences"},
+            {"name": "Audit", "description": "Audit trail and history"},
+            {"name": "Reports", "description": "Reporting and analytics"},
+            {"name": "Integrations", "description": "External system integrations"},
+        ],
+        license_info={
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT",
+        },
+        contact={
+            "name": "PLM Support",
+            "url": "https://github.com/rdeputy/plm",
+        },
     )
 
     # CORS middleware — restrict origins via env var
@@ -56,6 +105,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Security headers middleware (outermost)
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # Metrics middleware
+    app.add_middleware(MetricsMiddleware)
 
     # Rate limiting middleware
     app.add_middleware(RateLimitMiddleware)
@@ -123,6 +178,15 @@ def create_app() -> FastAPI:
     async def health_check():
         """Health check endpoint."""
         return {"status": "healthy", "service": "plm"}
+
+    @app.get("/metrics")
+    async def metrics():
+        """Prometheus metrics endpoint."""
+        from fastapi.responses import Response
+        return Response(
+            content=get_metrics(),
+            media_type=get_metrics_content_type(),
+        )
 
     @app.get("/")
     async def root():
